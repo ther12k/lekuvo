@@ -1020,15 +1020,29 @@ fn main() {
                     }
                 }
                 // Debug escape hatch: dump the fully composited frame
-                // (document + mascot sprites) to PNG.
+                // (document + mascot sprites) to PNG. A path ending in
+                // `/` writes numbered frames (frame_0000.png, ...) so
+                // animation motion can be diffed across renders.
                 if let Some(path) = std::env::var_os("LEKUVO_SNAPSHOT") {
-                    let _ = image::save_buffer(
-                        std::path::Path::new(&path),
-                        &frame_buffer,
-                        WIN_W as u32,
-                        WIN_H as u32,
-                        image::ColorType::Rgba8,
-                    );
+                    let path = std::path::PathBuf::from(path);
+                    if path.is_dir() {
+                        let file = path.join(format!("frame_{:04}.png", view.frames_rendered()));
+                        let _ = image::save_buffer(
+                            &file,
+                            &frame_buffer,
+                            WIN_W as u32,
+                            WIN_H as u32,
+                            image::ColorType::Rgba8,
+                        );
+                    } else {
+                        let _ = image::save_buffer(
+                            &path,
+                            &frame_buffer,
+                            WIN_W as u32,
+                            WIN_H as u32,
+                            image::ColorType::Rgba8,
+                        );
+                    }
                 }
                 if win.present(&frame_buffer).is_err() {
                     running = false;

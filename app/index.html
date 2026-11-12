@@ -57,9 +57,9 @@
           ></span>
           <!-- playing indicator: three bars -->
           <span vx-show="live === 'music' && media.playing" class="shrink-0" style="display:flex;align-items:flex-end;gap:2px;height:12px">
-            <span class="lk-eqbar" style="width:3px;height:12px;border-radius:999px;background-color:#8EA7F7"></span>
-            <span class="lk-eqbar" style="width:3px;height:9px;border-radius:999px;background-color:#8EA7F7"></span>
-            <span class="lk-eqbar" style="width:3px;height:7px;border-radius:999px;background-color:#8EA7F7"></span>
+            <span class="lk-eqbar animate-pulse" style="width:3px;height:12px;border-radius:999px;background-color:#8EA7F7"></span>
+            <span class="lk-eqbar animate-pulse" style="width:3px;height:9px;border-radius:999px;background-color:#8EA7F7"></span>
+            <span class="lk-eqbar animate-pulse" style="width:3px;height:7px;border-radius:999px;background-color:#8EA7F7"></span>
           </span>
         </div>
         <div id="focus-progress" class="lk-line h-1 rounded-full mt-1 overflow-hidden" vx-show="live === 'focus'">
@@ -124,10 +124,18 @@
       <!-- Music panel -->
       <div id="musicrow" data-vv-test="musicrow" vx-show="tab === 'music'" class="flex items-center gap-4">
         <!-- Vinyl record (themed accent disc) -->
-        <div class="lk-vinyl shrink-0" style="width:96px;height:96px;border-radius:999px;display:flex;align-items:center;justify-content:center">
-          <div class="lk-vinyl-ring" style="width:62px;height:62px;border-radius:999px;border:6px solid #FFFFFF2E;display:flex;align-items:center;justify-content:center">
-            <div class="lk-vinyl-center" style="width:34px;height:34px;border-radius:999px;background-color:#10131F;display:flex;align-items:center;justify-content:center">
-              <div class="lk-vinyl-hole" style="width:12px;height:12px;border-radius:999px;background-color:#F2F4FFEB"></div>
+        <div
+          class="lk-vinyl shrink-0"
+          :class="media.playing
+            ? 'lk-vinyl animate-spin shrink-0'
+            : 'lk-vinyl shrink-0'"
+          style="width:96px;height:96px;border-radius:999px;display:flex;flex-direction:column;align-items:center;padding-top:12px"
+        >
+          <!-- off-center marker: the visible proof the disc is spinning -->
+          <div style="width:7px;height:7px;border-radius:999px;background-color:#F2F4FFB3"></div>
+          <div class="lk-vinyl-ring" style="width:58px;height:58px;border-radius:999px;border:6px solid #FFFFFF2E;display:flex;align-items:center;justify-content:center;margin-top:8px">
+            <div class="lk-vinyl-center" style="width:30px;height:30px;border-radius:999px;background-color:#10131F;display:flex;align-items:center;justify-content:center">
+              <div class="lk-vinyl-hole" style="width:10px;height:10px;border-radius:999px;background-color:#F2F4FFEB"></div>
             </div>
           </div>
         </div>
@@ -136,9 +144,9 @@
           <p vx-text="media.artist" class="lk-nowrap text-sm text-slate-400"></p>
           <div class="flex items-center gap-2 mt-0.5">
             <span vx-show="media.playing" class="shrink-0" style="display:flex;align-items:flex-end;gap:2px;height:12px">
-              <span class="lk-eqbar" style="width:3px;height:12px;border-radius:999px;background-color:#8EA7F7"></span>
-              <span class="lk-eqbar" style="width:3px;height:9px;border-radius:999px;background-color:#8EA7F7"></span>
-              <span class="lk-eqbar" style="width:3px;height:7px;border-radius:999px;background-color:#8EA7F7"></span>
+              <span class="lk-eqbar animate-pulse" style="width:3px;height:12px;border-radius:999px;background-color:#8EA7F7"></span>
+              <span class="lk-eqbar animate-pulse" style="width:3px;height:9px;border-radius:999px;background-color:#8EA7F7"></span>
+              <span class="lk-eqbar animate-pulse" style="width:3px;height:7px;border-radius:999px;background-color:#8EA7F7"></span>
             </span>
             <span
               class="lk-nowrap text-xs font-bold" style="background-color:#FFFFFF1A;color:#C7CFE8;border-radius:999px;padding:2px 8px"
