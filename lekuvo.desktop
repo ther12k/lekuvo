@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Lekuvo
+Comment=Dynamic Notch Bar for Linux powered by the VelquView native Tailwind renderer
+Exec=/home/rizky/Workspace/Learning/lekuvo/target/release/lekuvo
+Icon=/home/rizky/Workspace/Learning/lekuvo/lekuvo.png
+Terminal=false
+Categories=Utility;DesktopUtility;
+StartupNotify=false
+X-GNOME-Autostart-enabled=false

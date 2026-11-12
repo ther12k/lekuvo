@@ -1,0 +1,25 @@
+/* Lekuvo notch author styles.
+   Utilities carry the layout; these rules only add hover feedback that
+   the Tailwind v0 profile expresses through author CSS (:hover). */
+
+#btn-prev:hover,
+#btn-next:hover,
+#btn-close:hover {
+  background-color: #334155;
+}
+
+#btn-play:hover {
+  background-color: #2563eb;
+}
+
+#pill:hover {
+  background-color: #1e293b;
+}
+
+#grip {
+  cursor: move;
+}
+
+html, body {
+  background: transparent;
+}

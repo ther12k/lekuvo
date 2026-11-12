@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Lekuvo — Animated SVG playground</title>
+  <style>
+:root{--cobalt:#4361d7;--cornflower:#87a3ff;--butter:#ffe4a0;--ink:#19253d;--cream:#fff7e8;--page:#fbf8f1;--panel:#fffdf8;--muted:#697184;--line:#e6e5e2;--soft:#f0f2fa;--desktop:#d4dff7;--shape:#adbfeb;--shadow:0 12px 40px #19253d07;color-scheme:light}
+:root[data-surface="dark"]{--page:#111a2b;--panel:#19253d;--ink:#fff7e8;--muted:#a5b3cd;--line:#34425e;--soft:#22314e;--desktop:#263955;--shape:#3b5780;--shadow:0 12px 40px #0002;color-scheme:dark}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--page);color:var(--ink);font:14px/1.55 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,select{font:inherit}button,a,select{-webkit-tap-highlight-color:transparent}button{cursor:pointer;color:inherit}button:disabled{cursor:default;opacity:.4}button:focus-visible,a:focus-visible,select:focus-visible{outline:3px solid var(--cornflower);outline-offset:4px}a{color:inherit;text-underline-offset:4px}lekuvo-mascot{display:block}button{transition:background-color .15s,border-color .15s,color .15s}.page-shell{width:min(1240px,calc(100% - 64px));margin:0 auto}.site-header{height:104px;display:flex;align-items:center;gap:28px;border-bottom:1px solid var(--line)}.brand{display:flex;gap:11px;align-items:center;text-decoration:none}.brand-symbol{width:48px;height:48px;background:var(--butter);border-radius:15px;display:grid;place-items:center}.brand-name{font-size:26px;line-height:1.1;font-weight:800;letter-spacing:-1px}.brand-name>span{display:block;margin-top:6px;font-weight:650;font-size:8px;letter-spacing:1.9px;color:var(--muted)}.header-links{display:flex;align-items:center;gap:28px;margin-left:auto;font-size:12px;color:var(--muted)}.header-links a{text-decoration:none}.header-links a:hover{color:var(--cobalt)}.surface-switch,.view-switch,.motion-switch{display:inline-flex;gap:3px;padding:4px;border:1px solid var(--line);border-radius:11px;background:var(--panel)}.surface-switch button,.view-switch button,.motion-switch button{border:0;border-radius:7px;padding:6px 11px;background:transparent;font-size:11px;font-weight:650;color:var(--muted)}.surface-switch button[aria-pressed=true],.view-switch button[aria-pressed=true],.motion-switch button[aria-pressed=true]{background:var(--ink);color:var(--page)}.intro{padding:48px 0 36px;display:flex;justify-content:space-between;gap:32px;align-items:flex-end}.eyebrow{font-size:9px;font-weight:700;letter-spacing:1.7px;color:var(--muted);margin:0 0 12px}.intro .eyebrow{display:flex;align-items:center;gap:8px}.intro .eyebrow span{width:7px;height:7px;background:var(--cobalt);border-radius:50%}h1{font-size:clamp(35px,4.7vw,58px);line-height:1.08;letter-spacing:-2.8px;margin:0;font-weight:760}h1 em{font-style:normal;color:var(--cobalt)}:root[data-surface=dark] h1 em{color:var(--cornflower)}.intro-copy{font-size:13px;color:var(--muted);margin:0 0 5px;max-width:300px;line-height:1.8}.studio{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(300px,1fr);gap:24px}.preview-card,.mood-panel,.event-panel,.event-log-panel,.size-showcase{border:1px solid var(--line);background:var(--panel);border-radius:22px;box-shadow:var(--shadow);overflow:hidden}.card-toolbar{min-height:61px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px}.toolbar-label{display:flex;align-items:center;gap:7px;letter-spacing:1px;font-size:8px;font-weight:750;color:var(--muted)}.toolbar-label i{width:6px;height:6px;background:var(--cobalt);border-radius:50%}.view-switch{padding:3px}.view-switch button{font-size:10px;padding:5px 9px}.desktop{height:370px;background:var(--desktop);border-top:8px solid #101a2c;position:relative;overflow:hidden;display:flex;justify-content:center}.wallpaper-shape{position:absolute;pointer-events:none;background:var(--shape);width:670px;height:450px;border-radius:49%;opacity:.46}.shape-one{top:165px;left:-230px;transform:rotate(25deg)}.shape-two{top:205px;right:-200px;transform:rotate(-18deg);opacity:.6}.notch{position:relative;width:calc(100% - 84px);max-width:620px;height:171px;background:#101a2c;color:#fff7e8;border-radius:0 0 30px 30px;box-shadow:0 16px 24px #111a2b15;transition:width .25s ease,height .25s ease,border-radius .25s ease}.character-dock{position:absolute;width:180px;height:180px;left:16px;bottom:-46px;display:grid;place-items:center}.notch-copy{padding:25px 22px 20px;margin-left:190px}.notch-kicker{font-size:8px;letter-spacing:1.8px;color:#87a3ff;margin:0 0 9px;font-weight:700}.notch-copy h2{font-size:23px;letter-spacing:-.8px;line-height:1.2;margin:0 0 7px}.notch-copy>p:not(.notch-kicker){font-size:11px;color:#adbbd5;line-height:1.5;margin:0;max-width:255px}.state-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 7px;border:1px solid #42506a;border-radius:6px;margin-top:13px;font-size:9px;color:#d5def1}.state-pill>span:first-child{height:5px;width:5px;border-radius:50%;background:var(--butter)}.desktop-caption{position:absolute;left:27px;bottom:29px;display:flex;gap:12px;align-items:center;color:var(--ink)}.caption-line{width:3px;height:35px;background:var(--cobalt);border-radius:2px}.desktop-caption strong{font-size:12px;letter-spacing:-.1px}.desktop-caption p{font-size:10px;margin:3px 0 0;opacity:.7}.surface-caption{position:absolute;bottom:22px;right:22px;font-size:7px;letter-spacing:1.5px;color:var(--ink);opacity:.5}.desktop[data-view=compact] .notch{width:338px;max-width:calc(100% - 48px);height:58px;border-radius:0 0 20px 20px}.desktop[data-view=compact] .character-dock{width:42px;height:42px;left:14px;top:4px;bottom:auto}.desktop[data-view=compact] .notch-copy{margin-left:67px;padding:14px 18px 10px 0;display:flex;align-items:center;justify-content:space-between;gap:8px}.desktop[data-view=compact] .notch-copy h2{font-size:12px;letter-spacing:0;margin:0;line-height:1.3}.desktop[data-view=compact] .notch-kicker,.desktop[data-view=compact] .notch-copy>p:not(.notch-kicker){display:none}.desktop[data-view=compact] .state-pill{margin:0;font-size:8px;white-space:nowrap}.preview-footer{min-height:51px;padding:13px 19px;display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:10px;color:var(--muted)}.preview-footer strong{font-weight:650;color:var(--ink);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.footer-divider{margin:0 8px;opacity:.4}.svg-badge{white-space:nowrap;font-size:8px;letter-spacing:.2px}.mood-panel{padding:25px 22px 20px}.panel-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}.panel-heading .eyebrow{font-size:8px;letter-spacing:1px;margin-bottom:6px}.panel-heading h2{font-size:25px;letter-spacing:-.9px;margin:0;line-height:1.2}.count-chip{width:32px;height:32px;border-radius:10px;background:var(--butter);color:#19253d;display:grid;place-items:center;font-size:11px;font-weight:700}.mood-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.mood-button{padding:10px 6px;min-height:42px;border:1px solid var(--line);border-radius:9px;background:var(--panel);font-size:11px;font-weight:550;display:flex;gap:6px;align-items:center;justify-content:center}.mood-button::before{content:"";height:5px;width:5px;border-radius:50%;background:var(--cornflower);opacity:.55}.mood-button[aria-pressed=true]{background:var(--cobalt);border-color:var(--cobalt);color:#fff7e8}.mood-button[aria-pressed=true]::before{background:var(--butter);opacity:1}.mood-help{font-size:10px;color:var(--muted);line-height:1.7;margin:14px 0 20px}.motion-settings{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:17px;border-top:1px solid var(--line)}.control-label{font-size:11px;font-weight:650}.motion-switch button{padding:5px 10px;font-size:10px}.motion-note{font-size:9px;color:var(--muted);margin:8px 0 0}.section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;margin:43px 0 18px}.section-heading .eyebrow{font-size:8px;letter-spacing:1.1px;margin-bottom:7px}.section-heading h2{font-size:27px;line-height:1.2;letter-spacing:-.9px;margin:0}.section-heading>p{font-size:11px;line-height:1.7;color:var(--muted);margin:0}.event-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:24px}.event-panel{padding:23px}.event-quick-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}.quick-event{border:1px solid var(--line);border-radius:10px;background:var(--panel);min-height:46px;padding:8px;font-size:10px;font-weight:600;line-height:1.3}.quick-event:hover,.mood-button:not([aria-pressed=true]):hover{background:var(--soft);border-color:var(--cornflower)}.event-form{margin-top:22px}.event-form label{font-size:10px;font-weight:650;display:block;margin-bottom:7px}.event-input-row{display:flex;gap:8px}select{border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:9px;padding:9px 10px;min-width:0;flex:1;font-size:11px}.primary-button{border:1px solid var(--cobalt);background:var(--cobalt);color:#fff7e8;border-radius:9px;padding:9px 14px;font-size:11px;font-weight:650;white-space:nowrap}.primary-button:hover{background:#354fbc}.primary-button span{margin-left:6px}.sequence-heading{display:flex;justify-content:space-between;align-items:center;font-size:10px;font-weight:650;margin:22px 0 9px;gap:12px}.text-button{border:0;background:transparent;color:var(--muted);font-size:10px;text-decoration:underline;text-underline-offset:3px;padding:2px 0}.sequence-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}.sequence-button{position:relative;border:1px solid var(--line);border-radius:10px;padding:12px 29px 11px 12px;background:var(--soft);text-align:left}.sequence-button strong{display:block;font-size:10px;line-height:1.5}.sequence-button>span:not(.sequence-arrow){display:block;font-size:9px;line-height:1.6;color:var(--muted);margin-top:4px}.sequence-arrow{position:absolute;right:12px;top:11px;color:var(--cobalt);font-size:13px}.sequence-button[aria-pressed=true]{border-color:var(--cobalt);box-shadow:0 0 0 1px var(--cobalt)}.sequence-status{font-size:9px;color:var(--muted);margin:10px 0 0;min-height:15px}.event-log-panel{display:flex;flex-direction:column}.log-heading{display:flex;justify-content:space-between;align-items:center;padding:19px 20px 14px;border-bottom:1px solid var(--line)}.log-heading h3{font-size:12px;margin:0}.event-log{list-style:none;padding:0 20px;margin:0;height:258px;overflow:auto;flex:1}.event-log li{padding:11px 0;border-bottom:1px solid var(--line);font-size:10px}.event-log .empty-log{border-bottom:0;color:var(--muted);padding-top:25px;line-height:1.8}.log-top{display:flex;align-items:center;justify-content:space-between;gap:12px}.log-top strong{font-size:11px;font-weight:650}.log-top time{font-size:8px;color:var(--muted);font-variant-numeric:tabular-nums}.log-reason{display:block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:8px;color:var(--muted);margin-top:4px;overflow-wrap:anywhere}.log-footnote{font-size:9px;color:var(--muted);margin:0;padding:13px 20px;border-top:1px solid var(--line);line-height:1.7}.log-footnote code{font-size:8px}.size-showcase{display:grid;grid-template-columns:repeat(4,minmax(80px,1fr)) 1.7fr;padding:18px 23px;gap:16px;align-items:center}.size-sample{text-align:center}.size-stage{height:100px;background:var(--soft);border-radius:12px;display:flex;align-items:center;justify-content:center}.size-sample>span{display:block;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted);font-size:9px;margin-top:9px}.size-note{padding-left:12px}.size-note h3{margin:0 0 5px;font-size:13px;letter-spacing:-.2px}.size-note p{font-size:10px;line-height:1.8;color:var(--muted);margin:0}.small-tail{display:block;width:21px;height:21px;border:5px solid var(--cobalt);border-left-color:transparent;border-radius:50%;transform:rotate(-25deg);margin-bottom:12px}.usage-section{display:grid;grid-template-columns:1fr 1.4fr;gap:64px;align-items:center;margin:47px 0 42px;padding-top:38px;border-top:1px solid var(--line)}.usage-copy h2{font-size:31px;line-height:1.16;letter-spacing:-1.1px;margin:0 0 15px}.usage-copy>p:not(.eyebrow){font-size:12px;line-height:1.85;color:var(--muted);max-width:350px;margin:0 0 19px}.readme-link{font-size:11px;font-weight:650;text-decoration:none;color:var(--cobalt)}:root[data-surface=dark] .readme-link{color:var(--cornflower)}.code-card{background:#19253d;color:#fff7e8;border-radius:17px;overflow:hidden}.code-label{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #3a4760;padding:13px 18px;font-size:9px;color:#bccbea}.code-label .text-button{color:#c9d4e9;font-size:9px}.code-card pre{font:10px/1.9 ui-monospace,SFMono-Regular,Consolas,monospace;margin:0;padding:16px 18px 20px;overflow:auto;color:#dde6fc;tab-size:2}footer{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:25px 0 33px;border-top:1px solid var(--line);font-size:9px;color:var(--muted)}footer strong{font-size:15px;color:var(--ink);letter-spacing:-.6px}footer p{margin:0}footer a{text-decoration:none}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:1050px){.page-shell{width:calc(100% - 40px)}.studio{grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr);gap:18px}.notch{width:calc(100% - 42px)}.character-dock{left:3px;width:155px}.notch-copy{margin-left:154px;padding-left:7px}.notch-copy h2{font-size:20px}.event-layout{gap:18px}.size-showcase{grid-template-columns:repeat(4,minmax(60px,1fr)) 1.5fr;gap:10px}.usage-section{gap:35px}.header-links{gap:18px}.intro-copy{max-width:245px;font-size:12px}}
+@media(max-width:820px){.site-header{height:89px}.header-links{display:none}.surface-switch{margin-left:auto}.intro{display:block;padding-top:34px}.intro-copy{max-width:520px;margin-top:20px}.intro-copy br{display:none}.studio{grid-template-columns:1fr}.desktop{height:355px}.notch{width:calc(100% - 90px);max-width:560px}.character-dock{left:18px;width:180px}.notch-copy{margin-left:200px;padding-left:15px}.mood-panel{padding:20px}.panel-heading{margin-bottom:14px}.mood-grid{grid-template-columns:repeat(6,minmax(0,1fr))}.mood-help{margin-bottom:14px}.motion-settings{padding-top:14px}.event-layout{grid-template-columns:1fr}.event-log{height:210px;max-height:260px;flex:auto}.section-heading h2{font-size:24px}.size-showcase{grid-template-columns:repeat(4,1fr);gap:12px}.size-note{grid-column:1 / -1;padding:3px 0 0;display:grid;grid-template-columns:30px 1fr;column-gap:10px;align-items:center}.small-tail{grid-row:1 / 3;margin:0}.size-note p{grid-column:2}.size-note h3{margin-bottom:2px}.usage-section{grid-template-columns:1fr;gap:25px}.usage-copy>p:not(.eyebrow){max-width:600px}.usage-copy h2 br{display:none}}
+@media(max-width:540px){.page-shell{width:calc(100% - 28px)}.site-header{height:82px}.brand-name{font-size:23px}.brand-symbol{width:41px;height:41px}.surface-switch button{font-size:10px;padding:5px 9px}h1{font-size:35px;letter-spacing:-1.7px}.intro{padding:29px 0 25px}.intro .eyebrow{font-size:8px;letter-spacing:1.1px}.intro-copy{font-size:12px;margin-top:17px}.toolbar-label{font-size:7px;letter-spacing:.5px}.card-toolbar{padding:10px 12px;min-height:54px}.view-switch button{font-size:9px;padding:4px 7px}.desktop{height:344px}.notch{width:calc(100% - 32px);height:182px;border-radius:0 0 24px 24px}.character-dock{left:0;bottom:-58px;width:150px;height:170px}.character-dock lekuvo-mascot{transform:scale(.86);transform-origin:center}.notch-copy{margin-left:129px;padding:23px 13px 18px 4px}.notch-copy h2{font-size:19px;letter-spacing:-.5px}.notch-copy>p:not(.notch-kicker){font-size:10px}.notch-kicker{font-size:7px;letter-spacing:1px}.state-pill{font-size:8px}.desktop-caption{left:18px;bottom:24px;gap:9px}.desktop-caption strong{font-size:10px}.desktop-caption p{font-size:9px}.surface-caption{display:none}.desktop[data-view=compact] .character-dock lekuvo-mascot{transform:none}.desktop[data-view=compact] .notch{max-width:calc(100% - 28px)}.desktop[data-view=compact] .notch-copy h2{font-size:11px}.preview-footer{font-size:9px;padding:12px}.svg-badge{font-size:7px}.footer-divider{margin:0 5px}.mood-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.mood-button{font-size:11px}.panel-heading h2{font-size:24px}.section-heading{display:block;margin-top:34px}.section-heading>p{margin-top:11px;font-size:10px}.section-heading>p br{display:none}.section-heading h2{font-size:23px}.event-panel{padding:17px}.event-quick-actions{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}.quick-event{font-size:9px;padding:7px 4px}.sequence-buttons{grid-template-columns:1fr}.sequence-button>span:not(.sequence-arrow){font-size:10px}.sequence-button strong{font-size:11px}.event-input-row{gap:6px}.primary-button{font-size:10px;padding:9px 10px}select{font-size:10px;padding:9px 7px}.size-showcase{padding:14px;gap:9px}.size-stage{height:86px}.size-note p{font-size:9px}.size-note h3{font-size:12px}.usage-section{margin-top:34px;padding-top:30px}.usage-copy h2{font-size:28px}.code-card pre{font-size:9px;padding:14px}.code-label{padding:12px 14px}footer{flex-wrap:wrap;gap:12px;padding-top:20px}footer p{order:3;width:100%;font-size:8px}footer a{margin-left:auto}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}button,.notch{transition:none}}
+:root[data-motion="off"] .notch,:root[data-motion="off"] button{transition:none}
+.event-log:focus-visible{outline:2px solid var(--cornflower);outline-offset:-3px}
+
+</style>
+</head>
+<body>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Lekuvo playground home"><span class="brand-symbol" aria-hidden="true"><lekuvo-mascot mood="awake" size="36" motion="auto" variant="compact"></lekuvo-mascot></span><span class="brand-name">lekuvo<span>SVG MOTION KIT</span></span></a>
+      <nav class="header-links" aria-label="Resources"><a href="#usage">Use the component</a><a href="./src/lekuvo-mascot.js">View source <span aria-hidden="true">↗</span></a></nav>
+      <div class="surface-switch" role="group" aria-label="Preview surface"><button type="button" data-surface="light" aria-pressed="true">Light</button><button type="button" data-surface="dark" aria-pressed="false">Dark</button></div>
+    </header>
+    <main id="top">
+      <section class="intro">
+        <div><p class="eyebrow"><span></span>YOUR LITTLE NOTCH COMPANION</p><h1>A tiny companion.<br><em>A whole lot of character.</em></h1></div>
+        <p class="intro-copy">Twelve moods. One animated SVG.<br>Meet the chameleon that reacts to your app, then settles quietly at the edge.</p>
+      </section>
+
+      <section class="studio" aria-label="Interactive mascot playground">
+        <div class="preview-card">
+          <div class="card-toolbar"><span class="toolbar-label"><i aria-hidden="true"></i> LIVE VECTOR PREVIEW</span><div class="view-switch" role="group" aria-label="Notch layout"><button type="button" data-view="expanded" aria-pressed="true">Expanded</button><button type="button" data-view="compact" aria-pressed="false">Compact</button></div></div>
+          <div class="desktop" id="desktop" data-view="expanded">
+            <div class="wallpaper-shape shape-one" aria-hidden="true"></div><div class="wallpaper-shape shape-two" aria-hidden="true"></div>
+            <div class="notch">
+              <div class="character-dock"><lekuvo-mascot id="main-mascot" mood="lazy" size="160" motion="auto" variant="full"></lekuvo-mascot></div>
+              <div class="notch-copy"><p class="notch-kicker">LEKUVO IS HERE</p><h2 id="stage-mood">Taking it easy.</h2><p id="stage-description">A quiet moment, right at the edge.</p><span class="state-pill"><span aria-hidden="true"></span><span id="state-pill-text">Lazy</span></span></div>
+            </div>
+            <div class="desktop-caption"><span class="caption-line" aria-hidden="true"></span><div><strong>Small presence. Plenty of personality.</strong><p>Try a mood, or send an event below.</p></div></div>
+            <span class="surface-caption">DEMO SURFACE</span>
+          </div>
+          <div class="preview-footer"><span><strong id="current-mood">lazy</strong><span class="footer-divider">/</span><span id="current-reason">initial state</span></span><span class="svg-badge">SVG · live component</span></div>
+        </div>
+
+        <aside class="mood-panel" aria-labelledby="mood-heading">
+          <div class="panel-heading"><div><p class="eyebrow">PERSONALITY, ON DEMAND</p><h2 id="mood-heading">Pick a mood.</h2></div><span class="count-chip">12</span></div>
+          <div class="mood-grid" id="mood-grid" role="group" aria-label="Choose a mascot mood"></div>
+          <p class="mood-help">Picking a mood sets a manual override and clears active event states.</p>
+          <div class="motion-settings"><span class="control-label">Motion</span><div class="motion-switch" role="group" aria-label="Animation preference"><button type="button" data-motion="auto" aria-pressed="true">Auto</button><button type="button" data-motion="on" aria-pressed="false">On</button><button type="button" data-motion="off" aria-pressed="false">Off</button></div></div>
+          <p class="motion-note" id="motion-note">Auto follows your system’s reduced-motion setting.</p>
+        </aside>
+      </section>
+
+      <section class="event-section" aria-labelledby="event-heading">
+        <div class="section-heading"><div><p class="eyebrow">LET YOUR APP DO THE TALKING</p><h2 id="event-heading">Give Lekuvo something to react to.</h2></div><p>These controls send simulated app events<br>to the actual SVG component.</p></div>
+        <div class="event-layout">
+          <div class="event-panel">
+            <div class="event-quick-actions" id="quick-events" role="group" aria-label="Quick app events"></div>
+            <form id="event-form" class="event-form"><label for="event-select">All events</label><div class="event-input-row"><select id="event-select" name="event" aria-label="App event to send"></select><button class="primary-button" type="submit">Send event <span aria-hidden="true">↗</span></button></div></form>
+            <div class="sequence-heading"><span>Try an event sequence</span><button type="button" class="text-button" id="stop-sequence" disabled>Stop sequence</button></div>
+            <div class="sequence-buttons"><button type="button" class="sequence-button" data-sequence="layers"><strong>Music → focus → listening</strong><span>Watch temporary activity release back to the underlying state.</span><span class="sequence-arrow" aria-hidden="true">↗</span></button><button type="button" class="sequence-button" data-sequence="attention"><strong>A moment that needs attention</strong><span>Busy, task complete, then a reminder. Priority decides what shows.</span><span class="sequence-arrow" aria-hidden="true">↗</span></button></div>
+            <p class="sequence-status" id="sequence-status" role="status">No sequence running.</p>
+          </div>
+          <div class="event-log-panel"><div class="log-heading"><h3>State changes</h3><button type="button" class="text-button" id="clear-log">Clear</button></div><ol id="event-log" class="event-log" tabindex="0" aria-label="Mascot state changes, newest first"><li class="empty-log">Choose a mood or trigger an event.<br>Actual state changes will appear here.</li></ol><p class="log-footnote">Logged from <code>lekuvo:statechange</code>. An event can be accepted while a higher-priority mood remains visible.</p></div>
+        </div>
+      </section>
+
+      <section class="compact-section" aria-labelledby="compact-heading"><div class="section-heading"><div><p class="eyebrow">BUILT TO BELONG IN A SMALL SPACE</p><h2 id="compact-heading">Still Lekuvo, at a glance.</h2></div><p>Compact variants shown at their actual CSS size.<br>They follow the selected live state.</p></div><div class="size-showcase"><div class="size-sample"><div class="size-stage"><lekuvo-mascot class="size-mascot" mood="lazy" size="24" variant="compact" motion="auto"></lekuvo-mascot></div><span>24 px</span></div><div class="size-sample"><div class="size-stage"><lekuvo-mascot class="size-mascot" mood="lazy" size="32" variant="compact" motion="auto"></lekuvo-mascot></div><span>32 px</span></div><div class="size-sample"><div class="size-stage"><lekuvo-mascot class="size-mascot" mood="lazy" size="48" variant="compact" motion="auto"></lekuvo-mascot></div><span>48 px</span></div><div class="size-sample"><div class="size-stage"><lekuvo-mascot class="size-mascot" mood="lazy" size="64" variant="compact" motion="auto"></lekuvo-mascot></div><span>64 px</span></div><div class="size-note"><span class="small-tail" aria-hidden="true"></span><h3>A curl worth remembering.</h3><p>The compact treatment keeps Lekuvo’s expression and signature shape close at hand.</p></div></div></section>
+
+      <section class="usage-section" id="usage" aria-labelledby="usage-heading"><div class="usage-copy"><p class="eyebrow">NO FRAMEWORK REQUIRED</p><h2 id="usage-heading">A small component.<br>A simple conversation.</h2><p>Load the module, place the custom element, and send your app’s events. Use a direct mood override when you need explicit control.</p><a href="./README.md" class="readme-link">Read the integration guide <span aria-hidden="true">↗</span></a></div><div class="code-card"><div class="code-label"><span>HTML + JavaScript</span><button type="button" class="text-button" id="copy-code">Copy example</button></div><pre><code id="usage-code">&lt;script type="module" src="./src/lekuvo-mascot.js"&gt;&lt;/script&gt;
+
+&lt;lekuvo-mascot id="buddy" mood="lazy"
+  size="96" motion="auto"&gt;&lt;/lekuvo-mascot&gt;
+
+&lt;script type="module"&gt;
+  await customElements.whenDefined('lekuvo-mascot');
+  const buddy = document.querySelector('#buddy');
+
+  buddy.trigger('media:play');
+  buddy.trigger('audio:listening-start');
+  buddy.trigger('audio:listening-end');
+
+  // Explicitly choose a mood and clear event states.
+  buddy.setMood('wave');
+&lt;/script&gt;</code></pre></div></section>
+    </main>
+    <footer><span><strong>lekuvo</strong> / Animated SVG kit</span><p>Original character component · Twelve moods · App-event playground</p><a href="#top">Back to top ↑</a></footer>
+    <p class="sr-only" id="announcer" role="status" aria-live="polite"></p>
+  </div>
+  <script>
+/* Lekuvo SVG kit — generated by scripts/build.mjs. Edit src/, then rebuild. */
+(() => {
+'use strict';
+/**
+ * Original, code-native Lekuvo artwork. No images, fonts, filters or requests.
+ * Each instance receives its own gradient / clipping IDs through `prefix`.
+ */
+function createArtwork(prefix = 'instance') {
+  const ns = `lekuvo-${String(prefix).replace(/[^a-zA-Z0-9_-]/g, '') || 'instance'}`;
+  const ref = (name) => `${ns}-${name}`;
+  return `<svg class="lekuvo-art" viewBox="0 0 320 300" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="${ref('blue')}" x1="140" y1="70" x2="235" y2="262" gradientUnits="userSpaceOnUse"><stop stop-color="#A1B8FF"/><stop offset=".38" stop-color="#6389F5"/><stop offset="1" stop-color="#3454C9"/></linearGradient>
+    <linearGradient id="${ref('face')}" x1="174" y1="75" x2="241" y2="185" gradientUnits="userSpaceOnUse"><stop stop-color="#91ACFF"/><stop offset=".5" stop-color="#5E82EE"/><stop offset="1" stop-color="#4063D6"/></linearGradient>
+    <linearGradient id="${ref('tail')}" x1="53" y1="145" x2="123" y2="261" gradientUnits="userSpaceOnUse"><stop stop-color="#9EB6FF"/><stop offset=".38" stop-color="#5D80EC"/><stop offset="1" stop-color="#3652C3"/></linearGradient>
+    <linearGradient id="${ref('butter')}" x1="156" y1="164" x2="192" y2="262" gradientUnits="userSpaceOnUse"><stop stop-color="#FFF3B7"/><stop offset=".58" stop-color="#FFE18A"/><stop offset="1" stop-color="#F5C65B"/></linearGradient>
+    <linearGradient id="${ref('eye')}" x1="169" y1="105" x2="199" y2="159" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFDF2"/><stop offset="1" stop-color="#F1E7D2"/></linearGradient>
+    <clipPath id="${ref('near-eye')}"><ellipse cx="179" cy="129" rx="30" ry="31" transform="rotate(-12 179 129)"/></clipPath>
+    <clipPath id="${ref('far-eye')}"><ellipse cx="263" cy="111" rx="20" ry="26" transform="rotate(-19 263 111)"/></clipPath>
+    <clipPath id="${ref('compact-eye')}"><ellipse cx="212" cy="137" rx="31" ry="29" transform="rotate(-10 212 137)"/></clipPath>
+  </defs>
+
+  <g class="full-art">
+    <ellipse class="ground" cx="159" cy="276" rx="114" ry="8" fill="#293B82" opacity=".10"/>
+    <g class="character">
+      <g class="tail">
+        <!-- A stroked spiral leaves its center genuinely open to the background. -->
+        <path class="tail-outline" d="M148 244C113 272 56 265 43 228C27 185 52 145 91 145C127 145 151 171 145 201C139 232 108 246 85 228C64 212 72 184 92 181C102 179 111 182 113 189" stroke="url(#${ref('tail')})" stroke-width="32" stroke-linecap="round"/>
+        <path d="M145 248C112 272 61 262 49 226C36 189 58 154 92 154C122 154 140 176 136 201C132 226 108 236 90 222C75 210 81 190 95 190C101 190 106 191 108 195" stroke="url(#${ref('butter')})" stroke-width="17" stroke-linecap="round"/>
+        <path d="M39 204C36 177 55 150 82 145" stroke="#BCD0FF" stroke-width="5" stroke-linecap="round" opacity=".6"/>
+      </g>
+
+      <g class="torso">
+        <path d="M127 169C112 172 106 161 112 152C116 146 124 147 130 150C123 138 129 127 138 129C145 130 148 136 150 142C155 134 167 135 171 145L185 174Z" fill="url(#${ref('blue')})"/>
+        <path d="M150 151C121 162 115 188 122 222C119 248 135 267 167 266C194 268 221 257 225 235C231 205 213 174 189 161Z" fill="url(#${ref('blue')})"/>
+        <path d="M183 165C185 184 170 194 162 211C153 230 154 251 168 265C193 266 214 254 219 235C225 214 212 183 197 171Z" fill="url(#${ref('butter')})"/>
+        <path d="M137 176C126 189 128 214 132 221" stroke="#93AEFF" stroke-width="6" stroke-linecap="round" opacity=".5"/>
+        <g class="back-foot"><path d="M209 248C220 246 233 253 232 262C232 268 226 271 211 269L198 267C196 258 200 251 209 248Z" fill="url(#${ref('face')})"/><path d="M221 258L222 266" stroke="#3452B9" stroke-width="2.5" stroke-linecap="round"/></g>
+        <g class="front-foot"><path d="M141 250C152 245 170 250 174 260C177 269 168 274 152 272C137 273 130 267 133 259C134 255 137 252 141 250Z" fill="url(#${ref('face')})"/><path d="M149 260L150 270M161 260L162 270" stroke="#3554BA" stroke-width="2.5" stroke-linecap="round"/></g>
+      </g>
+
+      <g class="arm-rest"><path d="M213 208C223 210 229 219 237 224C246 224 252 229 250 235C249 243 237 246 231 241C217 237 208 225 205 217Z" fill="url(#${ref('blue')})"/><path d="M240 232L244 239" stroke="#3755BE" stroke-width="2.5" stroke-linecap="round"/></g>
+      <g class="arm-gesture"><path d="M213 217C224 223 233 215 240 201C240 194 241 184 247 179C250 177 254 179 253 185L252 191C260 179 266 175 270 179C274 183 265 190 264 193C276 186 281 189 280 194C279 201 266 207 259 208C254 225 240 239 226 238C216 237 208 229 207 221Z" fill="url(#${ref('blue')})"/><path d="M246 202C251 198 257 198 260 201" stroke="#3655BC" stroke-width="2.5" stroke-linecap="round"/></g>
+      <g class="arm-thinking"><path d="M210 221C219 224 226 217 229 207L232 187C230 181 232 176 237 176C242 176 243 180 242 185C248 179 252 182 251 187C250 193 246 196 241 198C243 219 232 237 220 237C212 236 207 231 207 225Z" fill="url(#${ref('blue')})"/></g>
+      <g class="arm-front"><path d="M151 203C133 211 129 226 134 244C128 251 134 264 142 264C148 264 149 260 150 255C153 266 161 267 166 262C171 257 166 248 158 244C152 234 157 224 166 219C164 213 158 207 151 203Z" fill="url(#${ref('blue')})"/><path d="M146 249C149 252 149 258 147 261" stroke="#3758C4" stroke-width="2.7" stroke-linecap="round"/></g>
+
+      <g class="head">
+        <path d="M137 131C131 110 141 89 159 88C157 74 166 66 179 70C191 74 198 86 216 88C238 80 255 82 264 94C284 98 296 115 294 134C293 155 268 175 236 181C195 188 149 169 137 131Z" fill="url(#${ref('face')})"/>
+        <path d="M151 156C176 174 220 175 253 162C270 155 283 147 293 133C295 153 271 175 236 181C205 187 171 177 151 156Z" fill="url(#${ref('butter')})"/>
+        <path d="M164 85C174 80 184 87 190 92" stroke="#B5C9FF" stroke-width="5" stroke-linecap="round" opacity=".55"/>
+        <ellipse cx="262" cy="110" rx="24" ry="30" transform="rotate(-19 262 110)" fill="url(#${ref('blue')})"/>
+        <ellipse cx="178" cy="126" rx="36" ry="37" transform="rotate(-12 178 126)" fill="url(#${ref('blue')})"/>
+
+        <g class="eye-open near-eye-open" clip-path="url(#${ref('near-eye')})">
+          <ellipse cx="179" cy="129" rx="30" ry="31" transform="rotate(-12 179 129)" fill="url(#${ref('eye')})"/>
+          <g class="pupil-look"><ellipse class="pupil" cx="190" cy="128" rx="13" ry="18" fill="#17234F"/><ellipse class="eye-glint" cx="194" cy="120" rx="4" ry="3" fill="white" opacity=".93"/></g>
+          <path class="dizzy-pupil" d="M181 143C165 137 170 115 184 114C199 113 205 131 195 138C187 144 178 136 181 129C183 124 190 126 189 131" stroke="#233268" stroke-width="4.5" stroke-linecap="round"/>
+          <path class="lid-lazy" d="M144 92H215V124C194 112 169 112 144 125Z" fill="url(#${ref('face')})"/><path class="lid-lazy lid-line" d="M148 124C169 112 191 111 209 121" stroke="#3656BE" stroke-width="2" stroke-linecap="round"/>
+          <path class="lid-focus" d="M144 92H215V116C191 107 168 110 144 126Z" fill="url(#${ref('face')})"/><path class="lid-focus lid-line" d="M147 125C167 112 190 108 210 115" stroke="#3656BE" stroke-width="2" stroke-linecap="round"/>
+        </g>
+        <g class="eye-open far-eye-open" clip-path="url(#${ref('far-eye')})">
+          <ellipse cx="263" cy="111" rx="20" ry="26" transform="rotate(-19 263 111)" fill="url(#${ref('eye')})"/>
+          <g class="pupil-look"><ellipse class="pupil" cx="270" cy="109" rx="10" ry="15" fill="#17234F"/><ellipse class="eye-glint" cx="272" cy="101" rx="3" ry="2.5" fill="white" opacity=".93"/></g>
+          <path class="dizzy-pupil" d="M261 123C249 119 249 102 261 100C273 98 279 112 272 118C267 123 260 118 262 112C264 108 269 110 268 113" stroke="#233268" stroke-width="3.5" stroke-linecap="round"/>
+          <path class="lid-lazy" d="M238 77H288V108C273 96 257 95 238 108Z" fill="url(#${ref('face')})"/><path class="lid-lazy lid-line" d="M241 106C258 96 273 98 285 109" stroke="#3656BE" stroke-width="2" stroke-linecap="round"/>
+          <path class="lid-focus" d="M238 77H288V101C273 91 255 95 238 109Z" fill="url(#${ref('face')})"/><path class="lid-focus lid-line" d="M241 107C255 95 272 93 285 102" stroke="#3656BE" stroke-width="2" stroke-linecap="round"/>
+        </g>
+        <g class="closed-eyes" stroke="#253669" stroke-width="4" stroke-linecap="round"><path d="M153 132C168 147 187 148 201 135"/><path d="M247 115C258 126 272 128 282 119"/></g>
+        <g class="happy-eyes" stroke="#253669" stroke-width="4.5" stroke-linecap="round"><path d="M154 133C166 117 187 116 200 130"/><path d="M248 114C255 101 271 102 280 114"/></g>
+
+        <path class="mouth-neutral" d="M220 151C233 159 247 153 253 146" stroke="#253669" stroke-width="3.7" stroke-linecap="round"/>
+        <ellipse class="mouth-surprised" cx="239" cy="157" rx="8" ry="10" fill="#243467"/>
+        <path class="mouth-thinking" d="M230 156C236 154 243 154 247 151" stroke="#253669" stroke-width="3.5" stroke-linecap="round"/>
+        <g class="mouth-happy"><path d="M220 148C230 154 244 151 255 143C254 160 238 169 227 161C223 158 221 153 220 148Z" fill="#223166"/><path d="M231 160C235 155 242 154 247 157C242 163 236 164 231 160Z" fill="#EA9D9C"/></g>
+        <path class="mouth-sleep" d="M229 157C232 159 236 159 239 157" stroke="#253669" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="282" cy="137" r="2.1" fill="#3455BC"/>
+      </g>
+    </g>
+  </g>
+
+  <!-- A dedicated small-size silhouette keeps the tail + eye identity at 24–32px. -->
+  <g class="compact-art">
+    <g class="compact-character">
+      <g class="compact-tail"><path d="M166 219C139 255 80 251 59 221C35 189 51 148 88 142C121 136 146 161 138 188C133 209 109 219 94 205C82 194 89 177 102 177C108 177 112 181 112 185" stroke="#4D72DD" stroke-width="31" stroke-linecap="round"/><path d="M160 223C133 250 83 243 66 217C47 188 62 155 91 151C119 147 137 167 130 188C126 205 109 210 99 201C91 194 95 184 104 186" stroke="#FFE18A" stroke-width="17" stroke-linecap="round"/></g>
+      <g class="compact-head"><path d="M137 161C128 141 136 117 154 111C151 97 164 91 175 99L184 108C212 96 243 107 256 126C271 129 281 139 277 153C269 180 226 190 185 183C164 180 148 175 137 161Z" fill="url(#${ref('face')})"/><path d="M149 165C187 180 241 181 274 150C271 175 234 192 189 184C168 181 156 175 149 165Z" fill="#FFE18A"/>
+        <g class="eye-open compact-eye-open" clip-path="url(#${ref('compact-eye')})"><ellipse cx="212" cy="137" rx="31" ry="29" transform="rotate(-10 212 137)" fill="#FFF9E9"/><g class="pupil-look"><ellipse class="pupil" cx="225" cy="136" rx="13" ry="17" fill="#192853"/><circle class="eye-glint" cx="229" cy="129" r="3.5" fill="#FFF"/></g><path class="dizzy-pupil" d="M208 152C193 148 194 128 208 125C222 123 231 140 221 147C215 152 206 147 208 141C209 136 216 137 216 141" stroke="#233268" stroke-width="4.5" stroke-linecap="round"/><path class="lid-lazy" d="M176 104H251V134C226 121 200 120 176 136Z" fill="#6588EE"/><path class="lid-focus" d="M176 104H251V128C224 117 201 122 176 138Z" fill="#6588EE"/></g>
+        <path class="closed-eyes" d="M185 139C201 153 220 154 237 139" stroke="#243568" stroke-width="5" stroke-linecap="round"/><path class="happy-eyes" d="M187 140C202 123 222 125 237 139" stroke="#243568" stroke-width="5" stroke-linecap="round"/>
+        <path class="mouth-neutral" d="M249 161C255 164 263 160 267 155" stroke="#243568" stroke-width="3" stroke-linecap="round"/><ellipse class="mouth-surprised" cx="257" cy="164" rx="5" ry="6" fill="#243568"/><path class="mouth-thinking" d="M250 163L260 159" stroke="#243568" stroke-width="3" stroke-linecap="round"/><path class="mouth-happy" d="M248 157C254 161 261 157 268 152C266 164 252 170 248 157Z" fill="#243568"/><path class="mouth-sleep" d="M250 163L257 163" stroke="#243568" stroke-width="3" stroke-linecap="round"/>
+      </g>
+    </g>
+  </g>
+
+  <g class="accessories" stroke-linecap="round" stroke-linejoin="round">
+    <g class="listening-signal" stroke="#6A8EFA" stroke-width="3.5"><path d="M297 106C303 113 303 122 299 128"/><path d="M304 98C314 111 314 124 307 136"/></g>
+    <g class="music-notes" fill="#4667D4"><path d="M103 69V51L120 47V63C120 70 110 73 108 67C107 64 110 61 115 61V54L108 56V71C108 78 98 81 96 75C95 72 98 69 103 69Z"/><path d="M274 44V29L286 26V32L279 34V45C278 51 269 52 268 47C267 44 270 42 274 44Z"/></g>
+    <g class="sleep-z" stroke="#4667B8" stroke-width="3.5"><path class="z-one" d="M268 70H278L267 81H279"/><path class="z-two" d="M284 46H299L283 62H300"/></g>
+    <g class="thinking-dots" fill="#7E9DF7"><circle class="thought-one" cx="239" cy="56" r="3.5"/><circle class="thought-two" cx="252" cy="48" r="4.5"/><circle class="thought-three" cx="269" cy="43" r="6"/></g>
+    <g class="dizzy-stars" fill="#F3C95E"><path class="star-one" d="M122 59L126 68L136 69L128 75L130 85L122 80L113 85L115 75L107 69L117 68Z"/><path class="star-two" d="M275 47L278 54L286 55L280 60L282 68L275 64L268 68L270 60L264 55L272 54Z"/></g>
+    <g class="success-symbol"><circle cx="271" cy="57" r="15" fill="#E9F2FF"/><path d="M263 57L269 63L280 50" stroke="#4166D5" stroke-width="4"/><path d="M117 77V88M111.5 82.5H122.5M293 87V95M289 91H297" stroke="#F3CA61" stroke-width="3.5"/></g>
+    <g class="alert-symbol"><path d="M277 41C279 36 285 36 287 41L301 66C303 71 301 76 295 76H269C263 76 261 71 264 66Z" fill="#FFE18A"/><path d="M282 48V59" stroke="#25376F" stroke-width="4"/><circle cx="282" cy="67" r="2.2" fill="#25376F"/></g>
+  </g>
+</svg>`;
+}
+
+/** Styling belongs entirely to the component's shadow root. */
+const MASCOT_CSS = `
+:host{display:inline-block;width:var(--lekuvo-size,160px);vertical-align:middle;contain:layout style;line-height:0;isolation:isolate}
+.stage{display:grid;place-items:center;width:100%;aspect-ratio:32/30}
+.lekuvo-art{display:block;width:100%;height:100%;overflow:visible}
+.lekuvo-art *{transform-box:view-box}
+/* Public palette: CSS overrides the SVG's fallback paint without changing geometry.
+   Highlights / secondary shade stops stay fixed to preserve the illustrated finish. */
+.lekuvo-art linearGradient[id$="-blue"] stop:nth-of-type(1),.lekuvo-art linearGradient[id$="-face"] stop:nth-of-type(1),.lekuvo-art linearGradient[id$="-tail"] stop:nth-of-type(1){stop-color:var(--lekuvo-blue-light,#87A3FF)}
+.lekuvo-art linearGradient[id$="-blue"] stop:nth-of-type(2),.lekuvo-art linearGradient[id$="-face"] stop:nth-of-type(2),.lekuvo-art linearGradient[id$="-tail"] stop:nth-of-type(2){stop-color:var(--lekuvo-blue,#4361D7)}
+.lekuvo-art linearGradient[id$="-blue"] stop:nth-of-type(3),.lekuvo-art linearGradient[id$="-face"] stop:nth-of-type(3),.lekuvo-art linearGradient[id$="-tail"] stop:nth-of-type(3){stop-color:var(--lekuvo-blue-shadow,#2B409A)}
+.lekuvo-art linearGradient[id$="-butter"] stop:nth-of-type(2){stop-color:var(--lekuvo-butter,#FFE4A0)}
+.lekuvo-art linearGradient[id$="-eye"] stop:nth-of-type(1){stop-color:var(--lekuvo-eye,#FFF7E8)}
+.ground,.pupil,.mouth-surprised,.mouth-happy,.mouth-happy>path:first-of-type{fill:var(--lekuvo-ink,#19253D)}
+.closed-eyes,.happy-eyes,.dizzy-pupil,.mouth-neutral,.mouth-thinking,.mouth-sleep{stroke:var(--lekuvo-ink,#19253D)}
+.lid-line,.front-foot>path:nth-of-type(2),.back-foot>path:nth-of-type(2),.arm-rest>path:nth-of-type(2),.arm-gesture>path:nth-of-type(2),.arm-front>path:nth-of-type(2){stroke:var(--lekuvo-blue-shadow,#2B409A)}
+.head>circle{fill:var(--lekuvo-blue-shadow,#2B409A)}
+.compact-tail>path:first-of-type{stroke:var(--lekuvo-blue,#4361D7)}
+.compact-tail>path:nth-of-type(2){stroke:var(--lekuvo-butter,#FFE4A0)}
+.compact-head>path:nth-of-type(2){fill:var(--lekuvo-butter,#FFE4A0)}
+.compact-eye-open>ellipse{fill:var(--lekuvo-eye,#FFF7E8)}
+.compact-eye-open>.lid-lazy,.compact-eye-open>.lid-focus{fill:var(--lekuvo-blue,#4361D7)}
+.listening-signal{stroke:var(--lekuvo-blue-light,#87A3FF)}
+.music-notes{fill:var(--lekuvo-blue,#4361D7)}
+.sleep-z{stroke:var(--lekuvo-blue-shadow,#2B409A)}
+.thinking-dots{fill:var(--lekuvo-blue-light,#87A3FF)}
+.dizzy-stars,.alert-symbol>path:first-of-type{fill:var(--lekuvo-butter,#FFE4A0)}
+.alert-symbol>path:nth-of-type(2){stroke:var(--lekuvo-ink,#19253D)}
+.alert-symbol>circle{fill:var(--lekuvo-ink,#19253D)}
+.success-symbol>circle{fill:var(--lekuvo-eye,#FFF7E8)}
+.success-symbol>path:first-of-type{stroke:var(--lekuvo-blue,#4361D7)}
+.success-symbol>path:nth-of-type(2){stroke:var(--lekuvo-butter,#FFE4A0)}
+.character{transform-origin:170px 262px}
+.tail{transform-origin:144px 244px}
+.head{transform-origin:202px 166px}
+.arm-gesture{transform-origin:216px 221px}
+.front-foot{transform-origin:154px 259px}
+.back-foot{transform-origin:213px 259px}
+.near-eye-open{transform-origin:179px 129px}
+.far-eye-open{transform-origin:263px 111px}
+.compact-eye-open{transform-origin:212px 137px}
+.eye-open{animation:lekuvo-blink 7s ease-in-out infinite}
+.pupil-look{transition:transform .22s ease}
+.dizzy-pupil,.lid-lazy,.lid-focus,.closed-eyes,.happy-eyes,.mouth-surprised,.mouth-thinking,.mouth-happy,.mouth-sleep,.arm-gesture,.arm-thinking,.compact-art,.accessories>g{display:none}
+.compact-character{transform-origin:161px 223px}
+.compact-tail{transform-origin:160px 220px}
+.compact-head{transform-origin:205px 169px}
+:host([variant="compact"]) .full-art{display:none}
+:host([variant="compact"]) .compact-art{display:inline}
+:host([variant="compact"]) .accessories{transform:translate(3px,30px) scale(.92);transform-origin:160px 150px}
+
+/* Static expressions remain distinct even with every animation disabled. */
+:host([data-mood="lazy"]) .lid-lazy{display:inline}
+:host([data-mood="lazy"]) .head{transform:rotate(3deg) translateY(3px)}
+:host([data-mood="lazy"]) .compact-head{transform:rotate(3deg)}
+:host([data-mood="lazy"]) .eye-open{animation-duration:9s}
+:host([data-mood="awake"]) .character{animation:lekuvo-breathe 5.4s ease-in-out infinite}
+:host([data-mood="awake"]) .pupil-look{animation:lekuvo-glance 8s ease-in-out infinite}
+:host([data-mood="wave"]) .arm-rest,:host([data-mood="alert"]) .arm-rest,:host([data-mood="success"]) .arm-rest,:host([data-mood="thinking"]) .arm-rest{display:none}
+:host([data-mood="wave"]) .arm-gesture,:host([data-mood="alert"]) .arm-gesture,:host([data-mood="success"]) .arm-gesture{display:inline}
+:host([data-mood="wave"]) .arm-gesture{transform:rotate(-7deg);animation:lekuvo-wave 1.65s ease-in-out infinite}
+:host([data-mood="wave"]) .head{transform:rotate(-3deg)}
+:host([data-mood="wave"]) .compact-head{transform:rotate(-4deg);animation:lekuvo-compact-wave 1.65s ease-in-out infinite}
+:host([data-mood="wave"]) .compact-tail{animation:lekuvo-tail-wag 1.65s ease-in-out infinite}
+:host([data-mood="listening"]) .listening-signal{display:inline;animation:lekuvo-signal 1.8s ease-in-out infinite}
+:host([data-mood="listening"]) .head{transform:rotate(-6deg) translateY(-2px)}
+:host([data-mood="listening"]) .compact-head{transform:rotate(-6deg)}
+:host([data-mood="listening"]) .pupil-look{transform:translate(3px,-2px)}
+:host([data-mood="dance"]) .character,:host([data-mood="dance"]) .compact-character{animation:lekuvo-dance .9s ease-in-out infinite}
+:host([data-mood="dance"]) .tail,:host([data-mood="dance"]) .compact-tail{animation:lekuvo-tail-dance .9s ease-in-out infinite}
+:host([data-mood="dance"]) .head{animation:lekuvo-head-dance .9s ease-in-out infinite}
+:host([data-mood="dance"]) .back-foot{animation:lekuvo-foot-tap .9s ease-in-out infinite}
+:host([data-mood="dance"]) .music-notes{display:inline;animation:lekuvo-notes 1.8s ease-in-out infinite}
+:host([data-mood="dance"]) .mouth-neutral,:host([data-mood="success"]) .mouth-neutral{display:none}
+:host([data-mood="dance"]) .mouth-happy,:host([data-mood="success"]) .mouth-happy{display:inline}
+:host([data-mood="sleep"]) .eye-open,:host([data-mood="success"]) .eye-open{display:none}
+:host([data-mood="sleep"]) .closed-eyes{display:inline}
+:host([data-mood="sleep"]) .mouth-neutral,:host([data-mood="surprised"]) .mouth-neutral,:host([data-mood="thinking"]) .mouth-neutral,:host([data-mood="alert"]) .mouth-neutral{display:none}
+:host([data-mood="sleep"]) .mouth-sleep{display:inline}
+:host([data-mood="sleep"]) .character{transform:translate(0,12px) scale(1,.94);animation:lekuvo-sleep-breathe 5s ease-in-out infinite}
+:host([data-mood="sleep"]) .head{transform:rotate(9deg) translate(3px,7px)}
+:host([data-mood="sleep"]) .compact-head{transform:rotate(8deg) translateY(5px)}
+:host([data-mood="sleep"]) .sleep-z{display:inline}
+:host([data-mood="sleep"]) .z-one{animation:lekuvo-snooze 3.6s ease-in-out infinite}
+:host([data-mood="sleep"]) .z-two{animation:lekuvo-snooze 3.6s ease-in-out 1.2s infinite}
+:host([data-mood="surprised"]) .mouth-surprised,:host([data-mood="alert"]) .mouth-surprised{display:inline}
+:host([data-mood="surprised"]) .head{transform:translateY(-5px) rotate(-3deg)}
+:host([data-mood="surprised"]) .compact-head{transform:translateY(-5px) rotate(-3deg)}
+:host([data-mood="surprised"]) .pupil{transform-box:fill-box;transform-origin:center;transform:scale(.68)}
+:host([data-mood="surprised"]) .eye-glint{display:none}
+:host([data-mood="surprised"]) .character{animation:lekuvo-startle .48s ease-out 1}
+:host([data-mood="dizzy"]) .pupil-look{display:none}
+:host([data-mood="dizzy"]) .dizzy-pupil{display:inline}
+:host([data-mood="dizzy"]) .head,:host([data-mood="dizzy"]) .compact-head{transform:rotate(5deg);animation:lekuvo-dizzy 2.3s ease-in-out infinite}
+:host([data-mood="dizzy"]) .dizzy-stars{display:inline;animation:lekuvo-stars 2.3s ease-in-out infinite}
+:host([data-mood="dizzy"]) .eye-open{animation:none}
+:host([data-mood="focus"]) .lid-focus{display:inline}
+:host([data-mood="focus"]) .head{transform:translate(3px,3px) rotate(2deg)}
+:host([data-mood="focus"]) .pupil-look{transform:translate(1px,3px)}
+:host([data-mood="focus"]) .eye-open{animation-duration:10s}
+:host([data-mood="thinking"]) .arm-thinking,:host([data-mood="thinking"]) .mouth-thinking,:host([data-mood="thinking"]) .thinking-dots{display:inline}
+:host([data-mood="thinking"]) .head,:host([data-mood="thinking"]) .compact-head{transform:rotate(-4deg)}
+:host([data-mood="thinking"]) .pupil-look{transform:translate(-3px,-6px)}
+:host([data-mood="thinking"]) .thought-one{animation:lekuvo-thought 1.8s ease-in-out infinite}
+:host([data-mood="thinking"]) .thought-two{animation:lekuvo-thought 1.8s ease-in-out .2s infinite}
+:host([data-mood="thinking"]) .thought-three{animation:lekuvo-thought 1.8s ease-in-out .4s infinite}
+:host([data-mood="success"]) .happy-eyes,:host([data-mood="success"]) .success-symbol{display:inline}
+:host([data-mood="success"]) .arm-gesture{transform:rotate(-11deg)}
+:host([data-mood="success"]) .character,:host([data-mood="success"]) .compact-character{animation:lekuvo-celebrate 1.65s ease-in-out infinite}
+:host([data-mood="success"]) .success-symbol{animation:lekuvo-confirm 1.65s ease-in-out infinite;transform-origin:271px 57px}
+:host([data-mood="alert"]) .alert-symbol{display:inline;animation:lekuvo-alert 2.2s ease-in-out infinite;transform-origin:282px 57px}
+:host([data-mood="alert"]) .arm-gesture{transform:rotate(-10deg)}
+:host([data-mood="alert"]) .pupil-look{transform:translate(2px,-2px)}
+
+@keyframes lekuvo-blink{0%,43%,46%,94%,97%,100%{transform:scaleY(1)}44.5%,95.5%{transform:scaleY(.06)}}
+@keyframes lekuvo-breathe{0%,100%{transform:translateY(0)}50%{transform:translateY(-1.5px)}}
+@keyframes lekuvo-glance{0%,62%,100%{transform:translate(0,0)}68%,77%{transform:translate(-3px,-1px)}84%,91%{transform:translate(1px,0)}}
+@keyframes lekuvo-wave{0%,52%,100%{transform:rotate(-7deg)}14%,38%{transform:rotate(-23deg)}26%{transform:rotate(6deg)}}
+@keyframes lekuvo-compact-wave{0%,52%,100%{transform:rotate(-4deg)}15%,38%{transform:rotate(-9deg)}26%{transform:rotate(3deg)}}
+@keyframes lekuvo-tail-wag{0%,55%,100%{transform:rotate(0)}18%{transform:rotate(-8deg)}36%{transform:rotate(5deg)}}
+@keyframes lekuvo-signal{0%,100%{opacity:.45}50%{opacity:1}}
+@keyframes lekuvo-dance{0%,100%{transform:rotate(-2deg) translateY(0)}25%{transform:rotate(0) translateY(-5px)}50%{transform:rotate(2deg) translateY(0)}75%{transform:rotate(0) translateY(-3px)}}
+@keyframes lekuvo-tail-dance{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(5deg)}}
+@keyframes lekuvo-head-dance{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(3deg)}}
+@keyframes lekuvo-foot-tap{0%,45%,100%{transform:translateY(0)}65%,80%{transform:translateY(-6px) rotate(-5deg)}}
+@keyframes lekuvo-notes{0%,100%{opacity:.7;transform:translateY(1px)}50%{opacity:1;transform:translateY(-4px)}}
+@keyframes lekuvo-sleep-breathe{0%,100%{transform:translate(0,12px) scale(1,.94)}50%{transform:translate(0,10px) scale(1,.945)}}
+@keyframes lekuvo-snooze{0%,100%{opacity:.5;transform:translateY(2px)}50%{opacity:1;transform:translateY(-4px)}}
+@keyframes lekuvo-startle{0%{transform:translateY(0)}35%{transform:translateY(-9px)}70%{transform:translateY(1px)}100%{transform:translateY(0)}}
+@keyframes lekuvo-dizzy{0%,100%{transform:rotate(5deg)}50%{transform:rotate(-5deg)}}
+@keyframes lekuvo-stars{0%,100%{transform:translate(-3px,0)}50%{transform:translate(4px,2px)}}
+@keyframes lekuvo-thought{0%,100%{opacity:.4;transform:translateY(0)}50%{opacity:1;transform:translateY(-2px)}}
+@keyframes lekuvo-celebrate{0%,50%,100%{transform:translateY(0)}20%{transform:translateY(-6px)}35%{transform:translateY(1px)}}
+@keyframes lekuvo-confirm{0%,55%,100%{transform:scale(1)}22%{transform:scale(1.08)}}
+@keyframes lekuvo-alert{0%,30%,100%{transform:rotate(0)}8%{transform:rotate(-6deg)}16%{transform:rotate(6deg)}24%{transform:rotate(-3deg)}}
+
+/* Pausing keeps the current frame. Turning motion off keeps the static mood. */
+:host([data-paused]) .lekuvo-art *{animation-play-state:paused!important}
+:host([motion="off"]) .lekuvo-art *{animation:none!important;transition:none!important}
+@media(prefers-reduced-motion:reduce){:host(:not([motion="on"])) .lekuvo-art *{animation:none!important;transition:none!important}}
+`;
+
+
+/**
+ * Lekuvo's deterministic, DOM-independent mood controller.
+ * Persistent activities are layered; temporary reactions expire safely.
+ */
+const MOODS = Object.freeze([
+  'lazy', 'awake', 'wave', 'listening', 'dance', 'sleep',
+  'surprised', 'dizzy', 'focus', 'thinking', 'success', 'alert',
+]);
+
+const APP_EVENTS = Object.freeze([
+  'app:idle', 'app:active', 'app:focus-start', 'app:focus-end',
+  'audio:listening-start', 'audio:listening-end', 'media:play', 'media:pause',
+  'reminder:due', 'task:completed', 'app:error', 'app:sleep', 'app:wake',
+  'pointer:wave', 'app:busy', 'app:ready', 'app:dizzy',
+]);
+
+const moodSet = new Set(MOODS);
+const eventSet = new Set(APP_EVENTS);
+
+function validateMood(mood) {
+  if (!moodSet.has(mood)) {
+    throw new RangeError(`Unknown Lekuvo mood: ${String(mood)}. Use ${MOODS.join(', ')}.`);
+  }
+  return mood;
+}
+
+function boundedNumber(value, fallback, label, maximum) {
+  const chosen = value === undefined ? fallback : value;
+  if (typeof chosen !== 'number' || !Number.isFinite(chosen) || chosen < 0 || chosen > maximum) {
+    throw new RangeError(`${label} must be a finite number from 0 to ${maximum}.`);
+  }
+  return chosen;
+}
+
+class MoodController {
+  constructor({
+    mood = 'lazy',
+    onChange = () => {},
+    setTimer = (fn, delay) => setTimeout(fn, delay),
+    clearTimer = (id) => clearTimeout(id),
+  } = {}) {
+    this.baseMood = validateMood(mood);
+    this.onChange = onChange;
+    this.setTimer = setTimer;
+    this.clearTimer = clearTimer;
+    this.channels = new Map();
+    this.temporary = null;
+    this.timer = null;
+    this.sequence = 0;
+    this.generation = 0;
+    this.currentMood = mood;
+  }
+
+  get mood() { return this.currentMood; }
+
+  resolve() {
+    let result = { mood: this.baseMood, priority: 0, sequence: 0 };
+    for (const candidate of this.channels.values()) {
+      if (candidate.priority > result.priority ||
+          (candidate.priority === result.priority && candidate.sequence > result.sequence)) {
+        result = candidate;
+      }
+    }
+    if (this.temporary && (this.temporary.priority > result.priority ||
+        (this.temporary.priority === result.priority && this.temporary.sequence > result.sequence))) {
+      result = this.temporary;
+    }
+    return result;
+  }
+
+  publish(reason) {
+    const next = this.resolve().mood;
+    const previous = this.currentMood;
+    this.currentMood = next;
+    if (next !== previous) this.onChange({ mood: next, previous, reason });
+    return next;
+  }
+
+  clearTemporary() {
+    this.generation += 1;
+    if (this.timer !== null) this.clearTimer(this.timer);
+    this.timer = null;
+    this.temporary = null;
+  }
+
+  setBaseMood(mood, reason = 'base') {
+    this.baseMood = validateMood(mood);
+    this.publish(reason);
+  }
+
+  setMood(mood, options = {}) {
+    validateMood(mood);
+    const duration = boundedNumber(options.duration, 0, 'duration', 60000);
+    const priority = boundedNumber(options.priority, 80, 'priority', 100);
+    const reason = typeof options.reason === 'string' ? options.reason : 'manual';
+    if (duration === 0) {
+      this.clearTemporary();
+      this.channels.clear();
+      this.baseMood = mood;
+      this.publish(reason);
+      return true;
+    }
+    if (priority < this.resolve().priority) return false;
+    this.clearTemporary();
+    this.temporary = { mood, priority, sequence: ++this.sequence };
+    const generation = this.generation;
+    this.timer = this.setTimer(() => {
+      // A canceled callback must never restore stale state.
+      if (generation !== this.generation) return;
+      this.timer = null;
+      this.temporary = null;
+      this.publish(`${reason}:expired`);
+    }, duration);
+    this.publish(reason);
+    return true;
+  }
+
+  channel(key, mood, priority, reason) {
+    this.channels.set(key, { mood, priority, sequence: ++this.sequence });
+    this.publish(reason);
+  }
+
+  removeChannel(key, reason) {
+    this.channels.delete(key);
+    this.publish(reason);
+  }
+
+  trigger(name, detail = {}) {
+    if (!eventSet.has(name)) return false;
+    const data = detail && typeof detail === 'object' ? detail : {};
+    const reaction = (mood, duration, priority) => {
+      // Event reactions always remain temporary, including a duration of zero.
+      // A zero-duration event is a no-op, never a permanent override.
+      const ms = boundedNumber(data.duration, duration, 'duration', 60000);
+      const rank = boundedNumber(data.priority, priority, 'priority', 100);
+      if (ms > 0) this.setMood(mood, { duration: ms, priority: rank, reason: name });
+      return true;
+    };
+
+    switch (name) {
+      case 'app:idle': this.setBaseMood('lazy', name); break;
+      case 'app:active': this.setBaseMood('awake', name); break;
+      case 'app:focus-start': this.channel('focus', 'focus', 35, name); break;
+      case 'app:focus-end': this.removeChannel('focus', name); break;
+      case 'audio:listening-start': this.channel('listening', 'listening', 70, name); break;
+      case 'audio:listening-end': this.removeChannel('listening', name); break;
+      case 'media:play': this.channel('media', 'dance', 30, name); break;
+      case 'media:pause': this.removeChannel('media', name); break;
+      case 'app:busy': this.channel('busy', 'thinking', 45, name); break;
+      case 'app:ready': this.removeChannel('busy', name); break;
+      case 'app:sleep':
+        this.clearTemporary();
+        this.channel('sleep', 'sleep', 100, name);
+        break;
+      case 'app:wake':
+        // Validate before changing state, so bad input cannot half-wake the mascot.
+        boundedNumber(data.duration, 1500, 'duration', 60000);
+        boundedNumber(data.priority, 80, 'priority', 100);
+        this.channels.delete('sleep');
+        this.baseMood = 'awake';
+        if (data.duration === 0) this.publish(name);
+        else {
+          reaction('wave', 1500, 80);
+          this.publish(name);
+        }
+        break;
+      case 'pointer:wave': return reaction('wave', 1500, 80);
+      case 'task:completed': return reaction('success', 1800, 80);
+      case 'reminder:due': return reaction('alert', 2600, 85);
+      case 'app:error': return reaction('surprised', 1600, 90);
+      case 'app:dizzy': return reaction('dizzy', 1800, 80);
+    }
+    return true;
+  }
+
+  reset() {
+    this.clearTemporary();
+    this.channels.clear();
+    this.baseMood = 'lazy';
+    this.publish('reset');
+  }
+
+  suspend() {
+    this.clearTemporary();
+    this.publish('disconnected');
+  }
+}
+
+
+
+let nextInstance = 0;
+const ElementBase = globalThis.HTMLElement ?? class {};
+const INTERNAL_CSS = `
+  :host { display: inline-block; width: var(--lekuvo-size, 160px); line-height: 0; vertical-align: middle; }
+  :host([hidden]) { display: none; }
+  :host([interactive]) { cursor: pointer; border-radius: 22%; outline: none; -webkit-tap-highlight-color: transparent; }
+  :host([interactive]:focus-visible) { outline: 3px solid var(--lekuvo-blue-light, #87a3ff); outline-offset: 5px; }
+  .stage { position: relative; width: 100%; }
+  .stage > svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+`;
+
+/** Original, event-driven inline SVG mascot. No framework or image dependencies. */
+class LekuvoMascot extends ElementBase {
+  static observedAttributes = ['mood', 'size', 'motion', 'variant', 'label', 'interactive', 'live'];
+
+  constructor() {
+    super();
+    this._controller = new MoodController({ onChange: (change) => this._renderState(change) });
+    this._manualPause = false;
+    this._inView = true;
+    this._eventTarget = null;
+    this._bindingToken = null;
+    this._eventCleanups = [];
+    this._observer = null;
+    this._connected = false;
+    this._boundVisibility = () => this._syncPause();
+    this._boundClick = () => {
+      if (this.hasAttribute('interactive')) this.trigger('pointer:wave');
+    };
+    this._boundKey = (event) => {
+      if (this.hasAttribute('interactive') && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        this.trigger('pointer:wave');
+      }
+    };
+    if (typeof this.attachShadow === 'function') {
+      const prefix = `lekuvo-${++nextInstance}`;
+      const shadow = this.attachShadow({ mode: 'open' });
+      shadow.innerHTML = `<style>${INTERNAL_CSS}\n${MASCOT_CSS}</style><div class="stage">${createArtwork(prefix)}</div><span class="sr-only" data-status></span>`;
+      this._status = shadow.querySelector('[data-status]');
+      // Host carries the accessible name; decorative SVG internals stay out of the tree.
+      const svg = shadow.querySelector('svg');
+      if (svg) {
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+      }
+    }
+  }
+
+  connectedCallback() {
+    if (this._connected) return;
+    this._connected = true;
+    this._applyAttributes();
+    this.addEventListener('click', this._boundClick);
+    this.addEventListener('keydown', this._boundKey);
+    this.ownerDocument.addEventListener('visibilitychange', this._boundVisibility);
+    const ViewObserver = this.ownerDocument.defaultView?.IntersectionObserver;
+    if (ViewObserver) {
+      this._observer = new ViewObserver((entries) => {
+        for (const entry of entries) if (entry.target === this) this._inView = entry.isIntersecting;
+        this._syncPause();
+      });
+      this._observer.observe(this);
+    }
+    this._bindEvents();
+    this._syncPause();
+  }
+
+  disconnectedCallback() {
+    this._connected = false;
+    this.removeEventListener('click', this._boundClick);
+    this.removeEventListener('keydown', this._boundKey);
+    this.ownerDocument.removeEventListener('visibilitychange', this._boundVisibility);
+    this._observer?.disconnect();
+    this._observer = null;
+    this._unbindEvents();
+    this._controller.suspend();
+    this.setAttribute('data-paused', '');
+  }
+
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (oldValue === newValue || !this._controller) return;
+    if (name === 'mood') {
+      this.setBaseMood(MOODS.includes(newValue) ? newValue : 'lazy', 'attribute');
+    } else if (name === 'size') {
+      this._applySize();
+    } else if (name === 'motion') {
+      if (newValue !== null && !['auto', 'on', 'off'].includes(newValue)) this.setAttribute('motion', 'auto');
+    } else if (name === 'variant') {
+      if (newValue !== null && !['full', 'compact'].includes(newValue)) this.setAttribute('variant', 'full');
+    }
+    if (['label', 'interactive', 'live', 'mood'].includes(name)) this._syncAccessibility();
+  }
+
+  _applyAttributes() {
+    // Initial HTML attributes are handled by attributeChangedCallback, including
+    // upgrade of a pre-existing element. Do not reapply an obsolete mood when
+    // a manually controlled element is detached and later reinserted.
+    this.setAttribute('data-mood', this._controller.mood);
+    this._applySize();
+    this._syncAccessibility();
+  }
+
+  _applySize() {
+    const raw = this.getAttribute('size');
+    const size = Number(raw);
+    if (raw !== null && Number.isFinite(size) && size >= 8 && size <= 2048) {
+      this.style.setProperty('--lekuvo-size', `${size}px`);
+    } else {
+      this.style.removeProperty('--lekuvo-size');
+    }
+  }
+
+  _syncAccessibility() {
+    const interactive = this.hasAttribute('interactive');
+    this.setAttribute('role', interactive ? 'button' : 'img');
+    if (interactive) this.setAttribute('tabindex', '0');
+    else this.removeAttribute('tabindex');
+    const label = this.getAttribute('label')?.trim();
+    this.setAttribute('aria-label', label || `Lekuvo, ${this._controller.mood}${interactive ? '. Activate to wave.' : ''}`);
+    if (this._status) {
+      this._status.setAttribute('aria-live', this.hasAttribute('live') ? 'polite' : 'off');
+      this._status.setAttribute('aria-atomic', 'true');
+    }
+  }
+
+  _renderState(change) {
+    this.setAttribute('data-mood', change.mood);
+    this._syncAccessibility();
+    if (this._status && this.hasAttribute('live')) this._status.textContent = `Lekuvo is ${change.mood}.`;
+    const EventClass = this.ownerDocument?.defaultView?.CustomEvent ?? globalThis.CustomEvent;
+    if (EventClass) this.dispatchEvent(new EventClass('lekuvo:statechange', { detail: change, bubbles: true, composed: true }));
+  }
+
+  _syncPause() {
+    const paused = this._manualPause || !this._connected || this.ownerDocument.hidden || !this._inView;
+    this.toggleAttribute('data-paused', paused);
+  }
+
+  get mood() { return this._controller.mood; }
+  set mood(value) { this.setMood(value); }
+
+  setMood(mood, options = {}) { return this._controller.setMood(validateMood(mood), options); }
+  setBaseMood(mood, reason = 'base') { this._controller.setBaseMood(validateMood(mood), reason); }
+  trigger(eventName, detail = {}) { return this._controller.trigger(eventName, detail); }
+  reset() { this._controller.reset(); }
+  pause() { this._manualPause = true; this._syncPause(); }
+  resume() { this._manualPause = false; this._syncPause(); }
+
+  connectEvents(target = globalThis.window) {
+    if (!target || typeof target.addEventListener !== 'function' || typeof target.removeEventListener !== 'function') {
+      throw new TypeError('connectEvents requires an EventTarget.');
+    }
+    this.disconnectEvents();
+    this._eventTarget = target;
+    const token = Symbol('lekuvo-event-binding');
+    this._bindingToken = token;
+    this._bindEvents();
+    return () => { if (this._bindingToken === token) this.disconnectEvents(); };
+  }
+
+  disconnectEvents() {
+    this._unbindEvents();
+    this._eventTarget = null;
+    this._bindingToken = null;
+  }
+
+  _bindEvents() {
+    if (!this._connected || !this._eventTarget || this._eventCleanups.length) return;
+    const target = this._eventTarget;
+    for (const eventName of APP_EVENTS) {
+      const listener = (event) => this.trigger(eventName, event.detail);
+      target.addEventListener(eventName, listener);
+      this._eventCleanups.push(() => target.removeEventListener(eventName, listener));
+    }
+  }
+
+  _unbindEvents() {
+    for (const cleanup of this._eventCleanups) cleanup();
+    this._eventCleanups = [];
+  }
+}
+
+function defineLekuvo() {
+  if (typeof globalThis.customElements !== 'undefined' && !customElements.get('lekuvo-mascot')) {
+    customElements.define('lekuvo-mascot', LekuvoMascot);
+  }
+  return LekuvoMascot;
+}
+
+defineLekuvo();
+
+})();
+
+(async () => {
+
+const moods = [
+  { id: 'lazy', name: 'Lazy', title: 'Taking it easy.', description: 'A quiet moment, right at the edge.' },
+  { id: 'awake', name: 'Awake', title: 'Ready when you are.', description: 'A little attention, without the interruption.' },
+  { id: 'wave', name: 'Wave', title: 'Oh, hello there.', description: 'A small greeting to welcome you back.' },
+  { id: 'listening', name: 'Listening', title: 'You have my attention.', description: 'Listening closely while your app takes the lead.' },
+  { id: 'dance', name: 'Dance', title: 'Found the rhythm.', description: 'A little movement for the music in your day.' },
+  { id: 'sleep', name: 'Sleep', title: 'Settling in for a rest.', description: 'Quiet eyes. A comfortable curl. Nothing to do.' },
+  { id: 'surprised', name: 'Surprised', title: 'Well, that was new.', description: 'A quick reaction when something unexpected happens.' },
+  { id: 'dizzy', name: 'Dizzy', title: 'One little moment…', description: 'A playful wobble before finding its feet again.' },
+  { id: 'focus', name: 'Focus', title: 'Let’s stay with it.', description: 'Attentive and composed while you concentrate.' },
+  { id: 'thinking', name: 'Thinking', title: 'Working on something.', description: 'A thoughtful pause while an activity is in progress.' },
+  { id: 'success', name: 'Success', title: 'Nicely done.', description: 'A small celebration for a finished task.' },
+  { id: 'alert', name: 'Alert', title: 'A gentle heads-up.', description: 'Something needs your attention. Take a look.' }
+];
+
+const events = [
+  ['app:idle', 'App becomes idle'], ['app:active', 'App becomes active'],
+  ['app:focus-start', 'Start focus'], ['app:focus-end', 'End focus'],
+  ['audio:listening-start', 'Start listening'], ['audio:listening-end', 'End listening'],
+  ['media:play', 'Play music'], ['media:pause', 'Pause music'],
+  ['reminder:due', 'Reminder is due'], ['task:completed', 'Task completed'],
+  ['app:error', 'Unexpected error'], ['app:sleep', 'Go to sleep'],
+  ['app:wake', 'Wake up'], ['pointer:wave', 'Wave hello'],
+  ['app:busy', 'Start thinking'], ['app:ready', 'Finish thinking'],
+  ['app:dizzy', 'Feel dizzy']
+];
+
+const $ = id => document.getElementById(id);
+const mascot = $('main-mascot');
+const specimens = [...document.querySelectorAll('.size-mascot')];
+const moodMap = new Map(moods.map(mood => [mood.id, mood]));
+const eventLabels = new Map(events);
+const sequenceTimers = [];
+let sequenceName = null;
+let motionPreference = 'auto';
+let currentMood = 'lazy';
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+await customElements.whenDefined('lekuvo-mascot');
+
+function stopSequence(message = 'Sequence stopped. Current activity remains until another event or mood is selected.') {
+  sequenceTimers.splice(0).forEach(timer => window.clearTimeout(timer));
+  const wasRunning = sequenceName !== null;
+  sequenceName = null;
+  $('stop-sequence').disabled = true;
+  document.querySelectorAll('[data-sequence]').forEach(button => button.setAttribute('aria-pressed', 'false'));
+  if (wasRunning) $('sequence-status').textContent = message;
+}
+
+function updateStateView(moodId, reason = '') {
+  const mood = moodMap.get(moodId) ?? moodMap.get('lazy');
+  currentMood = mood.id;
+  $('stage-mood').textContent = mood.title;
+  $('stage-description').textContent = mood.description;
+  $('state-pill-text').textContent = mood.name;
+  $('current-mood').textContent = mood.id;
+  if (reason) $('current-reason').textContent = reason;
+  document.querySelectorAll('button[data-mood]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.mood === mood.id)));
+  specimens.forEach(specimen => {
+    specimen.setMood(mood.id);
+    specimen.setAttribute('label', `Lekuvo at ${specimen.getAttribute('size')} pixels, ${mood.name.toLowerCase()}`);
+  });
+}
+
+function addStateLog(detail) {
+  const list = $('event-log');
+  list.querySelector('.empty-log')?.remove();
+  const row = document.createElement('li');
+  const top = document.createElement('div');
+  top.className = 'log-top';
+  const title = document.createElement('strong');
+  const previous = detail.previous || 'initial';
+  title.textContent = `${previous} → ${detail.mood}`;
+  const time = document.createElement('time');
+  const now = new Date();
+  time.dateTime = now.toISOString();
+  time.textContent = now.toLocaleTimeString([], { hour12: false });
+  const reason = document.createElement('span');
+  reason.className = 'log-reason';
+  reason.textContent = detail.reason || 'State changed';
+  top.append(title, time);
+  row.append(top, reason);
+  list.prepend(row);
+  while (list.children.length > 16) list.lastElementChild.remove();
+  $('announcer').textContent = `${moodMap.get(detail.mood)?.name || detail.mood} mood. ${detail.reason || ''}`;
+}
+
+mascot.addEventListener('lekuvo:statechange', event => {
+  const detail = event.detail || {};
+  if (!moodMap.has(detail.mood)) return;
+  updateStateView(detail.mood, detail.reason || 'state change');
+  addStateLog(detail);
+});
+
+moods.forEach(mood => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'mood-button';
+  button.dataset.mood = mood.id;
+  button.textContent = mood.name;
+  button.title = mood.description;
+  button.setAttribute('aria-pressed', String(mood.id === 'lazy'));
+  button.addEventListener('click', () => {
+    stopSequence('Sequence stopped by a manual mood selection.');
+    mascot.setMood(mood.id);
+    updateStateView(mood.id, 'manual mood');
+  });
+  $('mood-grid').append(button);
+});
+
+events.forEach(([name, label]) => {
+  const option = document.createElement('option');
+  option.value = name;
+  option.textContent = `${name} · ${label}`;
+  $('event-select').append(option);
+});
+$('event-select').value = 'media:play';
+
+function sendEvent(name, fromSequence = false) {
+  if (!fromSequence) stopSequence('Sequence stopped by a new app event.');
+  const recognized = mascot.trigger(name);
+  $('event-select').value = name;
+  if (!fromSequence) {
+    $('sequence-status').textContent = recognized
+      ? `Sent ${name}. The component decides which active mood takes priority.`
+      : `The component did not recognize ${name}.`;
+  }
+  return recognized;
+}
+
+[
+  ['media:play', 'Play music'], ['media:pause', 'Pause music'],
+  ['app:focus-start', 'Focus'], ['audio:listening-start', 'Listen'],
+  ['audio:listening-end', 'Stop listening'], ['task:completed', 'Task done'],
+  ['reminder:due', 'Reminder'], ['app:wake', 'Wake up']
+].forEach(([name, label]) => {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'quick-event';
+  button.textContent = label;
+  button.title = name;
+  button.addEventListener('click', () => sendEvent(name));
+  $('quick-events').append(button);
+});
+
+$('event-form').addEventListener('submit', event => {
+  event.preventDefault();
+  sendEvent($('event-select').value);
+});
+
+const sequences = {
+  layers: {
+    label: 'Music → focus → listening',
+    steps: [[0, 'media:play'], [1400, 'app:focus-start'], [2900, 'audio:listening-start'], [5200, 'audio:listening-end'], [7200, 'app:focus-end'], [9200, 'media:pause']],
+    finish: 10400
+  },
+  attention: {
+    label: 'A moment that needs attention',
+    steps: [[0, 'app:busy'], [1700, 'task:completed'], [3700, 'reminder:due'], [8200, 'app:ready']],
+    finish: 9400
+  }
+};
+
+function runSequence(name) {
+  stopSequence();
+  const sequence = sequences[name];
+  if (!sequence) return;
+  sequenceName = name;
+  mascot.setMood('awake');
+  updateStateView('awake', 'sequence start');
+  $('stop-sequence').disabled = false;
+  document.querySelectorAll('[data-sequence]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.sequence === name)));
+  sequence.steps.forEach(([delay, eventName], index) => {
+    sequenceTimers.push(window.setTimeout(() => {
+      if (sequenceName !== name) return;
+      sendEvent(eventName, true);
+      $('sequence-status').textContent = `${sequence.label} · ${index + 1}/${sequence.steps.length}: ${eventLabels.get(eventName)} (${eventName})`;
+    }, delay));
+  });
+  sequenceTimers.push(window.setTimeout(() => {
+    if (sequenceName !== name) return;
+    stopSequence(`${sequence.label} complete.`);
+  }, sequence.finish));
+}
+
+document.querySelectorAll('[data-sequence]').forEach(button => {
+  button.setAttribute('aria-pressed', 'false');
+  button.addEventListener('click', () => runSequence(button.dataset.sequence));
+});
+$('stop-sequence').addEventListener('click', () => stopSequence());
+
+$('clear-log').addEventListener('click', () => {
+  $('event-log').replaceChildren();
+  const empty = document.createElement('li');
+  empty.className = 'empty-log';
+  empty.textContent = 'Log cleared. New state changes will appear here.';
+  $('event-log').append(empty);
+  $('announcer').textContent = 'State-change log cleared.';
+});
+
+document.querySelectorAll('button[data-surface]').forEach(button => button.addEventListener('click', () => {
+  document.documentElement.dataset.surface = button.dataset.surface;
+  document.querySelectorAll('button[data-surface]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
+}));
+
+document.querySelectorAll('[data-view]').forEach(button => {
+  if (button.tagName !== 'BUTTON') return;
+  button.addEventListener('click', () => {
+    const compact = button.dataset.view === 'compact';
+    $('desktop').dataset.view = compact ? 'compact' : 'expanded';
+    mascot.setAttribute('size', compact ? '40' : '160');
+    mascot.setAttribute('variant', compact ? 'compact' : 'full');
+    document.querySelectorAll('button[data-view]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
+  });
+});
+
+function updateMotionNote() {
+  $('motion-note').textContent = motionPreference === 'off'
+    ? 'Motion is off. Expressions remain available as static vector states.'
+    : motionPreference === 'on'
+      ? 'Motion is explicitly on for this preview.'
+      : reducedMotion.matches
+        ? 'Auto: your system currently requests reduced motion.'
+        : 'Auto follows your system’s reduced-motion setting.';
+}
+
+document.querySelectorAll('button[data-motion]').forEach(button => button.addEventListener('click', () => {
+  motionPreference = button.dataset.motion;
+  document.documentElement.dataset.motion = motionPreference;
+  document.querySelectorAll('lekuvo-mascot').forEach(element => element.setAttribute('motion', motionPreference));
+  document.querySelectorAll('button[data-motion]').forEach(other => other.setAttribute('aria-pressed', String(other === button)));
+  updateMotionNote();
+}));
+reducedMotion.addEventListener('change', updateMotionNote);
+updateMotionNote();
+
+$('copy-code').addEventListener('click', async () => {
+  const button = $('copy-code');
+  const code = $('usage-code').textContent;
+  try {
+    await navigator.clipboard.writeText(code);
+    button.textContent = 'Copied';
+    window.setTimeout(() => { button.textContent = 'Copy example'; }, 1800);
+  } catch {
+    const range = document.createRange();
+    range.selectNodeContents($('usage-code'));
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    button.textContent = 'Selected — copy with your keyboard';
+    window.setTimeout(() => { button.textContent = 'Copy example'; }, 2500);
+  }
+});
+
+window.addEventListener('pagehide', () => stopSequence());
+updateStateView(currentMood, 'initial state');
+
+})().catch(error => {
+  const status = document.getElementById('sequence-status');
+  if (status) status.textContent = 'Preview error: ' + error.message;
+  console.error(error);
+});
+</script>
+</body>
+</html>

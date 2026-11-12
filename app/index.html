@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Lekuvo</title>
+</head>
+<body style="margin:0">
+  <main
+    id="root"
+    vx-state="{
+      expanded: false,
+      tucked: false,
+      clock: '--:--',
+      hasMedia: false,
+      media: { playing: false, title: 'Nothing playing', artist: '' },
+      zone: 'tc'
+    }"
+    style="width:560px;height:372px"
+    :class="zone === 'bl' || zone === 'bc' || zone === 'br'
+      ? 'flex flex-col-reverse justify-end items-center'
+      : 'flex flex-col justify-start items-center'"
+  >
+    <!-- The pill: clock, compact mascot, grip. Whole pill toggles the card. -->
+    <div
+      id="pill"
+      data-vv-test="pill"
+      class="flex items-center gap-3 h-10 px-5 rounded-2xl bg-slate-900 text-slate-100 transition duration-500"
+      :class="tucked
+        ? 'flex items-center gap-3 h-10 px-5 rounded-2xl bg-slate-900 text-slate-100 transition duration-500 opacity-0'
+        : 'flex items-center gap-3 h-10 px-5 rounded-2xl bg-slate-900 text-slate-100 transition duration-500 opacity-100'"
+      @click="expanded = !expanded"
+    >
+      <div id="mascot-compact" data-vv-test="mascot-compact" class="w-7 h-7 shrink-0"></div>
+      <span vx-text="clock" class="text-lg font-semibold"></span>
+      <div id="grip" class="w-7 h-7 shrink-0 flex items-center justify-center text-slate-500 text-xs">&#10431;</div>
+    </div>
+
+    <!-- The expanded card: full mascot, media info, transport controls. -->
+    <div
+      id="card"
+      data-vv-test="card"
+      class="mt-2 w-96 rounded-2xl bg-slate-900 text-slate-100 p-5 flex flex-col gap-4"
+      vx-show="expanded && !tucked"
+      vx-transition:enter="transition duration-300 ease-out"
+      vx-transition:enter-start="opacity-0 scale-95"
+      vx-transition:enter-end="opacity-100 scale-100"
+      vx-transition:leave="transition duration-200 ease-in"
+      vx-transition:leave-end="opacity-0 scale-95"
+    >
+      <div class="flex items-center gap-4">
+        <div id="mascot-full" data-vv-test="mascot-full" class="w-24 h-24 rounded-full bg-slate-800 shrink-0"></div>
+        <div class="flex flex-col gap-1 grow min-w-0">
+          <p vx-text="media.title" class="font-semibold text-base"></p>
+          <p vx-text="media.artist" class="text-sm text-slate-400"></p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-center gap-5">
+        <button id="btn-prev" class="w-10 h-10 rounded-full bg-slate-800 text-slate-100">&#9664;</button>
+        <button
+          id="btn-play"
+          class="w-14 h-14 rounded-full bg-blue-600 text-white font-semibold"
+          vx-text="media.playing ? 'Pause' : 'Play'"
+        ></button>
+        <button id="btn-next" class="w-10 h-10 rounded-full bg-slate-800 text-slate-100">&#9654;</button>
+      </div>
+
+      <div class="flex items-center justify-between text-xs text-slate-500">
+        <span>Lekuvo</span>
+        <button id="btn-close" class="rounded-md px-2 py-1" @click="expanded = false">&#215;</button>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

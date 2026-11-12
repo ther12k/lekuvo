@@ -1,0 +1,52 @@
+{
+  "moods": {
+    "alert": {
+      "compact": 3,
+      "full": 3
+    },
+    "awake": {
+      "compact": 3,
+      "full": 1
+    },
+    "dance": {
+      "compact": 1,
+      "full": 8
+    },
+    "dizzy": {
+      "compact": 1,
+      "full": 8
+    },
+    "focus": {
+      "compact": 3,
+      "full": 7
+    },
+    "lazy": {
+      "compact": 3,
+      "full": 6
+    },
+    "listening": {
+      "compact": 3,
+      "full": 4
+    },
+    "sleep": {
+      "compact": 8,
+      "full": 1
+    },
+    "success": {
+      "compact": 1,
+      "full": 1
+    },
+    "surprised": {
+      "compact": 3,
+      "full": 8
+    },
+    "thinking": {
+      "compact": 2,
+      "full": 8
+    },
+    "wave": {
+      "compact": 1,
+      "full": 7
+    }
+  }
+}

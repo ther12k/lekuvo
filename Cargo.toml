@@ -1,0 +1,42 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/lekuvo-host",
+    "crates/lekuvo-app",
+    "crates/lekuvo-media",
+    "crates/lekuvo-mascot",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/ther12k/lekuvo"
+publish = false
+
+[workspace.dependencies]
+# UI renderer — the user's native Tailwind renderer, on the host-write-api
+# branch until that API merges to main.
+velqu-view = { git = "https://github.com/ther12k/velqu-view.git", branch = "host-write-api" }
+
+# X11 overlay window management.
+x11rb = { version = "0.13", features = ["shape", "randr", "shm"] }
+libc = "0.2"
+
+# MPRIS media control over DBus.
+zbus = { version = "5", features = ["blocking"] }
+
+# Sprite decoding + app icon.
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# Settings persistence.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Internal crates.
+lekuvo-host = { path = "crates/lekuvo-host" }
+lekuvo-media = { path = "crates/lekuvo-media" }
+lekuvo-mascot = { path = "crates/lekuvo-mascot" }
+
+[profile.release]
+lto = "thin"

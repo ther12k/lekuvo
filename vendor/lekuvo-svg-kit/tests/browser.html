@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lekuvo browser integration checks</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #19253d; background: #f6f8fd; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 28px 20px 56px; }
+    main { max-width: 920px; margin: 0 auto; }
+    .eyebrow { margin: 0 0 8px; color: #4361d7; font-size: 12px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 0 0 12px; font-size: clamp(25px, 4vw, 38px); line-height: 1.15; }
+    p { line-height: 1.55; }
+    .description { max-width: 740px; color: #53617a; margin: 0 0 20px; }
+    button { border: 0; border-radius: 12px; padding: 13px 19px; background: #4361d7; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+    button:hover { background: #2b409a; }
+    button:focus-visible { outline: 3px solid #87a3ff; outline-offset: 3px; }
+    button:disabled { cursor: wait; opacity: .65; }
+    #status { min-height: 24px; margin: 14px 0 18px; font-weight: 650; }
+    #status.pass { color: #17624a; }
+    #status.fail { color: #a12e35; }
+    .fixtures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 24px; }
+    .fixture { min-height: 165px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; border: 1px solid #dce3f0; border-radius: 16px; background: white; }
+    .fixture span { font-size: 12px; color: #66728a; }
+    lekuvo-mascot { min-height: 100px; }
+    h2 { margin: 24px 0 10px; font-size: 18px; }
+    ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+    li { display: grid; grid-template-columns: 48px 1fr; gap: 12px; border: 1px solid #dce3f0; border-radius: 10px; background: white; padding: 12px 14px; }
+    .badge { font-size: 11px; font-weight: 800; padding-top: 3px; }
+    .pass .badge { color: #17624a; }
+    .fail .badge { color: #a12e35; }
+    .detail { display: block; margin-top: 4px; color: #66728a; font-size: 13px; overflow-wrap: anywhere; }
+    .fail .detail { color: #a12e35; }
+    code { font-size: .9em; }
+    .note { margin-top: 22px; color: #66728a; font-size: 13px; }
+    @media (max-width: 520px) { body { padding: 20px 12px 40px; } .fixtures { gap: 7px; } .fixture { padding: 8px 2px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Lekuvo · browser integration</p>
+    <h1 id="heading">Ready for browser checks</h1>
+    <p class="description">These checks use real custom elements, their shadow SVG, DOM events, computed styles, and one short timer. No framework, external assets, or network requests are required.</p>
+    <button id="run" type="button">Run browser checks</button>
+    <p id="status" role="status" aria-live="polite">Not run yet.</p>
+
+    <section class="fixtures" aria-label="Visible component fixtures">
+      <div class="fixture" id="fixture-a">
+        <lekuvo-mascot id="a" size="110" mood="lazy" motion="off" label="First test character"></lekuvo-mascot>
+        <span>Instance A</span>
+      </div>
+      <div class="fixture" id="fixture-b">
+        <lekuvo-mascot id="b" size="110" mood="awake" motion="off" label="Second test character"></lekuvo-mascot>
+        <span>Instance B</span>
+      </div>
+      <div class="fixture" id="fixture-c">
+        <lekuvo-mascot id="c" size="110" mood="lazy" motion="off" label="Lifecycle test character"></lekuvo-mascot>
+        <span>Lifecycle fixture</span>
+      </div>
+    </section>
+
+    <h2>Check results</h2>
+    <ol id="results" aria-label="Browser check results"></ol>
+    <p class="note">The bundled runtime is loaded from <code>../dist/lekuvo-mascot.js</code> as a classic script. This page makes no microphone, audio-playback, desktop, or operating-system requests.</p>
+  </main>
+
+  <script src="../dist/lekuvo-mascot.js"></script>
+  <script>
+    (() => {
+      "use strict";
+
+      const moodNames = ["lazy", "awake", "wave", "listening", "dance", "sleep", "surprised", "dizzy", "focus", "thinking", "success", "alert"];
+      const heading = document.querySelector("#heading");
+      const status = document.querySelector("#status");
+      const results = document.querySelector("#results");
+      const runButton = document.querySelector("#run");
+      const a = document.querySelector("#a");
+      const b = document.querySelector("#b");
+      const c = document.querySelector("#c");
+      const lifecycleParent = document.querySelector("#fixture-c");
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+
+      const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+      const emit = (target, name, detail = {}) => target.dispatchEvent(new CustomEvent(name, { detail }));
+
+      class TrackedTarget extends EventTarget {
+        constructor() {
+          super();
+          this.listeners = new Map();
+        }
+        addEventListener(name, listener, options) {
+          super.addEventListener(name, listener, options);
+          if (!this.listeners.has(name)) this.listeners.set(name, new Set());
+          this.listeners.get(name).add(listener);
+        }
+        removeEventListener(name, listener, options) {
+          super.removeEventListener(name, listener, options);
+          this.listeners.get(name)?.delete(listener);
+        }
+        get listenerCount() {
+          return Array.from(this.listeners.values()).reduce((sum, set) => sum + set.size, 0);
+        }
+      }
+
+      function record(name, passed, detail) {
+        const row = document.createElement("li");
+        row.className = passed ? "pass" : "fail";
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = passed ? "PASS" : "FAIL";
+        const content = document.createElement("span");
+        content.textContent = name;
+        if (detail) {
+          const explanation = document.createElement("span");
+          explanation.className = "detail";
+          explanation.textContent = detail;
+          content.append(explanation);
+        }
+        row.append(badge, content);
+        results.append(row);
+      }
+
+      async function waitForRuntime() {
+        let timer;
+        try {
+          await Promise.race([
+            customElements.whenDefined("lekuvo-mascot"),
+            new Promise((_, reject) => {
+              timer = setTimeout(() => reject(new Error("The classic-script bundle did not register <lekuvo-mascot>. Build dist/lekuvo-mascot.js first.")), 800);
+            }),
+          ]);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      const checks = [
+        ["Classic-script registration and real inline SVG", () => {
+          const registered = customElements.get("lekuvo-mascot");
+          assert(typeof registered === "function", "Custom element is not registered.");
+          for (const element of [a, b, c]) {
+            assert(element instanceof registered, "An existing element did not upgrade.");
+            assert(element.shadowRoot?.querySelector("svg"), "A fixture has no real inline SVG.");
+            assert(!element.shadowRoot.querySelector("img"), "Fixture unexpectedly depends on an image element.");
+          }
+          return "All three existing elements upgraded and contain SVG artwork.";
+        }],
+
+        ["All 12 moods update the visible state", () => {
+          a.setMood("awake");
+          const transitions = [];
+          const onChange = (event) => transitions.push(event.detail);
+          a.addEventListener("lekuvo:statechange", onChange);
+          try {
+            let previous = "awake";
+            for (const mood of moodNames) {
+              assert(a.setMood(mood, { reason: "browser-check" }) === true, `setMood rejected ${mood}.`);
+              assert(a.mood === mood, `Mood getter did not resolve ${mood}.`);
+              assert(a.getAttribute("data-mood") === mood, `SVG state attribute did not update to ${mood}.`);
+              const change = transitions[transitions.length - 1];
+              assert(change?.mood === mood && change.previous === previous && change.reason === "browser-check", `State-change detail is wrong for ${mood}.`);
+              previous = mood;
+            }
+            assert(transitions.length === 12, `Expected 12 visible transitions, observed ${transitions.length}.`);
+          } finally {
+            a.removeEventListener("lekuvo:statechange", onChange);
+          }
+          return "Each mood updates .mood, data-mood, and the state-change event detail.";
+        }],
+
+        ["Multiple SVG instances have unique gradient IDs and independent state", () => {
+          const ids = [a, b, c].flatMap((element) => Array.from(element.shadowRoot.querySelectorAll("[id]"), (node) => node.id));
+          assert(ids.length > 0, "No SVG definition IDs were found.");
+          assert(new Set(ids).size === ids.length, "SVG definition IDs collide across instances.");
+          for (const element of [a, b, c]) {
+            assert(element.shadowRoot.querySelectorAll("linearGradient[id], radialGradient[id]").length > 0, "A fixture has no uniquely identified gradients.");
+          }
+          a.setMood("focus");
+          b.setMood("sleep");
+          c.setMood("awake");
+          assert(a.mood === "focus" && b.mood === "sleep" && c.mood === "awake", "Changing one instance changed another.");
+          return `${ids.length} unique definition IDs; each instance retains its own mood.`;
+        }],
+
+        ["Application activity is opt-in", () => {
+          a.disconnectEvents();
+          a.setMood("awake");
+          emit(window, "audio:listening-start");
+          emit(window, "media:play");
+          assert(a.mood === "awake", "An unconnected instance responded to global application events.");
+          return "Global application events do not affect an unconnected instance.";
+        }],
+
+        ["Keyboard greeting is enabled only by interactive", () => {
+          b.removeAttribute("interactive");
+          b.setMood("awake");
+          b.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+          assert(b.mood === "awake", "A noninteractive fixture reacted to the keyboard.");
+          assert(b.getAttribute("role") === "img" && !b.hasAttribute("tabindex"), "Noninteractive semantics are incorrect.");
+          b.setAttribute("interactive", "");
+          assert(b.getAttribute("role") === "button" && b.getAttribute("tabindex") === "0", "Interactive semantics are not keyboard-accessible.");
+          for (const key of ["Enter", " "]) {
+            b.setMood("awake");
+            const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+            b.dispatchEvent(event);
+            assert(b.mood === "wave", `${key === " " ? "Space" : key} did not trigger wave.`);
+            assert(event.defaultPrevented, "Keyboard activation did not prevent its default action.");
+          }
+          b.removeAttribute("interactive");
+          b.setMood("awake");
+          return "Enter and Space trigger wave only after opting in; role and tab order update.";
+        }],
+
+        ["Event connections, explicit disconnect, and stale cleanup", () => {
+          const firstBus = new EventTarget();
+          const secondBus = new EventTarget();
+          const oldCleanup = a.connectEvents(firstBus);
+          a.setMood("awake");
+          emit(firstBus, "media:play");
+          assert(a.mood === "dance", "The first bus did not connect.");
+          const currentCleanup = a.connectEvents(secondBus);
+          a.setMood("awake");
+          oldCleanup();
+          emit(secondBus, "app:focus-start");
+          assert(a.mood === "focus", "Old cleanup incorrectly disconnected the new bus.");
+          emit(firstBus, "audio:listening-start");
+          assert(a.mood === "focus", "The old event target is still connected.");
+          currentCleanup();
+          currentCleanup();
+          a.setMood("awake");
+          emit(secondBus, "app:focus-start");
+          assert(a.mood === "awake", "Returned cleanup did not disconnect the bus.");
+          a.connectEvents(firstBus);
+          a.disconnectEvents();
+          emit(firstBus, "media:play");
+          assert(a.mood === "awake", "disconnectEvents did not remove listeners.");
+          return "A stale cleanup cannot remove a newer connection; disconnect is effective.";
+        }],
+
+        ["Detach and reinsert release and restore event listeners", async () => {
+          const bus = new TrackedTarget();
+          c.setMood("awake");
+          const cleanup = c.connectEvents(bus);
+          const connectedCount = bus.listenerCount;
+          assert(connectedCount === 17, `Expected 17 application listeners, observed ${connectedCount}.`);
+          c.setMood("success", { duration: 1000 });
+          c.remove();
+          await Promise.resolve();
+          assert(bus.listenerCount === 0, "Detached fixture retained application listeners.");
+          assert(c.mood === "awake", "Detachment did not cancel the temporary reaction.");
+          emit(bus, "audio:listening-start");
+          assert(c.mood === "awake", "Detached fixture still handled application events.");
+          lifecycleParent.prepend(c);
+          await Promise.resolve();
+          assert(bus.listenerCount === connectedCount, "Reinsertion lost or duplicated listeners.");
+          emit(bus, "app:focus-start");
+          assert(c.mood === "focus", "Reinserted fixture did not handle events.");
+          cleanup();
+          assert(bus.listenerCount === 0, "Cleanup after reinsertion left listeners behind.");
+          return "Detachment cancels a temporary reaction and removes all 17 listeners; reinsertion restores one set.";
+        }],
+
+        ["A short temporary reaction restores ongoing activity", async () => {
+          a.setMood("lazy");
+          a.trigger("app:focus-start");
+          assert(a.mood === "focus", "The focus activity did not start.");
+          assert(a.setMood("success", { duration: 65, reason: "expiry-check" }), "Temporary success was rejected.");
+          assert(a.mood === "success", "Temporary success did not become visible.");
+          await delay(105);
+          assert(a.mood === "focus", "Temporary success did not restore the ongoing focus activity.");
+          return "A real 65 ms transient expires and returns to focus.";
+        }],
+
+        ["motion=off stops actual CSS animation", () => {
+          a.setAttribute("variant", "full");
+          a.setAttribute("motion", "on");
+          a.setMood("dance");
+          const character = a.shadowRoot.querySelector(".character");
+          assert(character, "The full character animation group is missing.");
+          assert(getComputedStyle(character).animationName !== "none", "The dance state has no authored animation.");
+          a.setAttribute("motion", "off");
+          assert(getComputedStyle(character).animationName === "none", "motion=off did not suppress the character animation.");
+          const movingNode = Array.from(a.shadowRoot.querySelectorAll("svg *")).find((node) => getComputedStyle(node).animationName !== "none");
+          assert(!movingNode, "At least one SVG layer still has an active animation under motion=off.");
+          return "The dance animation exists with motion=on and every SVG layer is still with motion=off.";
+        }],
+
+        ["Compact variant shows its dedicated SVG group", () => {
+          b.setAttribute("variant", "compact");
+          const compact = b.shadowRoot.querySelector(".compact-art");
+          const full = b.shadowRoot.querySelector(".full-art");
+          assert(compact && full, "The full or compact artwork group is missing.");
+          assert(getComputedStyle(compact).display !== "none", "The compact group is hidden.");
+          assert(getComputedStyle(full).display === "none", "The full group is still visible in compact mode.");
+          b.setAttribute("variant", "full");
+          assert(getComputedStyle(compact).display === "none" && getComputedStyle(full).display !== "none", "Returning to full did not reverse the visible groups.");
+          b.setAttribute("variant", "compact");
+          return "Switching variants exchanges the full and compact artwork groups.";
+        }],
+      ];
+
+      runButton.addEventListener("click", async () => {
+        runButton.disabled = true;
+        heading.textContent = "Running browser checks…";
+        status.className = "";
+        status.textContent = "Checking real DOM behavior…";
+        results.replaceChildren();
+        let passed = 0;
+        let failed = 0;
+        const started = performance.now();
+
+        try {
+          await waitForRuntime();
+          if (!c.isConnected) lifecycleParent.prepend(c);
+          for (const element of [a, b, c]) {
+            element.disconnectEvents();
+            element.reset();
+            element.removeAttribute("interactive");
+            element.setAttribute("motion", "off");
+            element.setAttribute("variant", "full");
+          }
+
+          for (const [name, test] of checks) {
+            try {
+              const detail = await test();
+              record(name, true, detail);
+              passed++;
+            } catch (error) {
+              record(name, false, error instanceof Error ? error.message : String(error));
+              failed++;
+            }
+          }
+        } catch (error) {
+          record("Load the bundled runtime", false, error instanceof Error ? error.message : String(error));
+          failed++;
+        } finally {
+          if (!c.isConnected) lifecycleParent.prepend(c);
+          for (const element of [a, b, c]) {
+            if (typeof element.disconnectEvents === "function") element.disconnectEvents();
+            if (typeof element.reset === "function") element.reset();
+            element.setAttribute("motion", "off");
+          }
+          if (typeof a.setMood === "function") a.setMood("awake");
+          if (typeof b.setMood === "function") b.setMood("focus");
+          if (typeof c.setMood === "function") c.setMood("lazy");
+          b.setAttribute("variant", "compact");
+          runButton.disabled = false;
+        }
+
+        const elapsed = Math.round(performance.now() - started);
+        const total = passed + failed;
+        heading.textContent = failed === 0
+          ? `Passed all ${total} browser checks`
+          : `${failed} browser check${failed === 1 ? "" : "s"} failed`;
+        status.className = failed === 0 ? "pass" : "fail";
+        status.textContent = `${failed === 0 ? "PASS" : "FAIL"} — ${passed}/${total} passed; ${failed} failed. Completed in ${elapsed} ms.`;
+        document.title = `${failed === 0 ? "PASS" : "FAIL"} — Lekuvo browser checks`;
+      });
+    })();
+  </script>
+</body>
+</html>

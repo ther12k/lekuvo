@@ -1,0 +1,11 @@
+[package]
+name = "lekuvo-media"
+description = "MPRIS2 media monitoring and control for Lekuvo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+zbus = { workspace = true }

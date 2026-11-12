@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Lekuvo — Animated SVG playground</title>
+  <link rel="stylesheet" href="./demo.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="Lekuvo playground home"><span class="brand-symbol" aria-hidden="true"><lekuvo-mascot mood="awake" size="36" motion="auto" variant="compact"></lekuvo-mascot></span><span class="brand-name">lekuvo<span>SVG MOTION KIT</span></span></a>
+      <nav class="header-links" aria-label="Resources"><a href="#usage">Use the component</a><a href="../src/lekuvo-mascot.js">View source <span aria-hidden="true">↗</span></a></nav>
+      <div class="surface-switch" role="group" aria-label="Preview surface"><button type="button" data-surface="light" aria-pressed="true">Light</button><button type="button" data-surface="dark" aria-pressed="false">Dark</button></div>
+    </header>
+    <main id="top">
+      <section class="intro">
+        <div><p class="eyebrow"><span></span>YOUR LITTLE NOTCH COMPANION</p><h1>A tiny companion.<br><em>A whole lot of character.</em></h1></div>
+        <p class="intro-copy">Twelve moods. One animated SVG.<br>Meet the chameleon that reacts to your app, then settles quietly at the edge.</p>
+      </section>
+
+      <section class="studio" aria-label="Interactive mascot playground">
+        <div class="preview-card">
+          <div class="card-toolbar"><span class="toolbar-label"><i aria-hidden="true"></i> LIVE VECTOR PREVIEW</span><div class="view-switch" role="group" aria-label="Notch layout"><button type="button" data-view="expanded" aria-pressed="true">Expanded</button><button type="button" data-view="compact" aria-pressed="false">Compact</button></div></div>
+          <div class="desktop" id="desktop" data-view="expanded">
+            <div class="wallpaper-shape shape-one" aria-hidden="true"></div><div class="wallpaper-shape shape-two" aria-hidden="true"></div>
+            <div class="notch">
+              <div class="character-dock"><lekuvo-mascot id="main-mascot" mood="lazy" size="160" motion="auto" variant="full"></lekuvo-mascot></div>
+              <div class="notch-copy"><p class="notch-kicker">LEKUVO IS HERE</p><h2 id="stage-mood">Taking it easy.</h2><p id="stage-description">A quiet moment, right at the edge.</p><span class="state-pill"><span aria-hidden="true"></span><span id="state-pill-text">Lazy</span></span></div>
+            </div>
+            <div class="desktop-caption"><span class="caption-line" aria-hidden="true"></span><div><strong>Small presence. Plenty of personality.</strong><p>Try a mood, or send an event below.</p></div></div>
+            <span class="surface-caption">DEMO SURFACE</span>
+          </div>
+          <div class="preview-footer"><span><strong id="current-mood">lazy</strong><span class="footer-divider">/</span><span id="current-reason">initial state</span></span><span class="svg-badge">SVG · live component</span></div>
+        </div>
+
+        <aside class="mood-panel" aria-labelledby="mood-heading">
+          <div class="panel-heading"><div><p class="eyebrow">PERSONALITY, ON DEMAND</p><h2 id="mood-heading">Pick a mood.</h2></div><span class="count-chip">12</span></div>
+          <div class="mood-grid" id="mood-grid" role="group" aria-label="Choose a mascot mood"></div>
+          <p class="mood-help">Picking a mood sets a manual override and clears active event states.</p>
+          <div class="motion-settings"><span class="control-label">Motion</span><div class="motion-switch" role="group" aria-label="Animation preference"><button type="button" data-motion="auto" aria-pressed="true">Auto</button><button type="button" data-motion="on" aria-pressed="false">On</button><button type="button" data-motion="off" aria-pressed="false">Off</button></div></div>
+          <p class="motion-note" id="motion-note">Auto follows your system’s reduced-motion setting.</p>
+        </aside>
+      </section>
+
+      <section class="event-section" aria-labelledby="event-heading">
+        <div class="section-heading"><div><p class="eyebrow">LET YOUR APP DO THE TALKING</p><h2 id="event-heading">Give Lekuvo something to react to.</h2></div><p>These controls send simulated app events<br>to the actual SVG component.</p></div>
+        <div class="event-layout">
+          <div class="event-panel">
+            <div class="event-quick-actions" id="quick-events" role="group" aria-label="Quick app events"></div>
+            <form id="event-form" class="event-form"><label for="event-select">All events</label><div class="event-input-row"><select id="event-select" name="event" aria-label="App event to send"></select><button class="primary-button" type="submit">Send event <span aria-hidden="true">↗</span></button></div></form>
+            <div class="sequence-heading"><span>Try an event sequence</span><button type="button" class="text-button" id="stop-sequence" disabled>Stop sequence</button></div>
+            <div class="sequence-buttons"><button type="button" class="sequence-button" data-sequence="layers"><strong>Music → focus → listening</strong><span>Watch temporary activity release back to the underlying state.</span><span class="sequence-arrow" aria-hidden="true">↗</span></button><button type="button" class="sequence-button" data-sequence="attention"><strong>A moment that needs attention</strong><span>Busy, task complete, then a reminder. Priority decides what shows.</span><span class="sequence-arrow" aria-hidden="true">↗</span></button></div>
+            <p class="sequence-status" id="sequence-status" role="status">No sequence running.</p>
+          </div>
+          <div class="event-log-panel"><div class="log-heading"><h3>State changes</h3><button type="button" class="text-button" id="clear-log">Clear</button></div><ol id="event-log" class="event-log" tabindex="0" aria-label="Mascot state changes, newest first"><li class="empty-log">Choose a mood or trigger an event.<br>Actual state changes will appear here.</li></ol><p class="log-footnote">Logged from <code>lekuvo:statechange</code>. An event can be accepted while a higher-priority mood remains visible.</p></div>
+        </div>
+      </section>
+
+      <section class="compact-section" aria-labelledby="compact-heading"><div class="section-heading"><div><p class="eyebrow">BUILT TO BELONG IN A SMALL SPACE</p><h2 id="compact-heading">Still Lekuvo, at a glance.</h2></div><p>Compact variants shown at their actual CSS size.<br>They follow the selected live state.</p></div><div class="size-showcase"><div class="size-sample"><div class="size-stage"><lekuvo-mascot class="size-mascot" mood="lazy" size="24" variant="compact" motion="auto"></lekuvo-mascot></div><span>24 px</span></div><div class="size-sample"><div class="size-stage"><lekuvo-mascot class="size-mascot" mood="lazy" size="32" variant="compact" motion="auto"></lekuvo-mascot></div><span>32 px</span></div><div class="size-sample"><div class="size-stage"><lekuvo-mascot class="size-mascot" mood="lazy" size="48" variant="compact" motion="auto"></lekuvo-mascot></div><span>48 px</span></div><div class="size-sample"><div class="size-stage"><lekuvo-mascot class="size-mascot" mood="lazy" size="64" variant="compact" motion="auto"></lekuvo-mascot></div><span>64 px</span></div><div class="size-note"><span class="small-tail" aria-hidden="true"></span><h3>A curl worth remembering.</h3><p>The compact treatment keeps Lekuvo’s expression and signature shape close at hand.</p></div></div></section>
+
+      <section class="usage-section" id="usage" aria-labelledby="usage-heading"><div class="usage-copy"><p class="eyebrow">NO FRAMEWORK REQUIRED</p><h2 id="usage-heading">A small component.<br>A simple conversation.</h2><p>Load the module, place the custom element, and send your app’s events. Use a direct mood override when you need explicit control.</p><a href="../README.md" class="readme-link">Read the integration guide <span aria-hidden="true">↗</span></a></div><div class="code-card"><div class="code-label"><span>HTML + JavaScript</span><button type="button" class="text-button" id="copy-code">Copy example</button></div><pre><code id="usage-code">&lt;script type="module" src="./src/lekuvo-mascot.js"&gt;&lt;/script&gt;
+
+&lt;lekuvo-mascot id="buddy" mood="lazy"
+  size="96" motion="auto"&gt;&lt;/lekuvo-mascot&gt;
+
+&lt;script type="module"&gt;
+  await customElements.whenDefined('lekuvo-mascot');
+  const buddy = document.querySelector('#buddy');
+
+  buddy.trigger('media:play');
+  buddy.trigger('audio:listening-start');
+  buddy.trigger('audio:listening-end');
+
+  // Explicitly choose a mood and clear event states.
+  buddy.setMood('wave');
+&lt;/script&gt;</code></pre></div></section>
+    </main>
+    <footer><span><strong>lekuvo</strong> / Animated SVG kit</span><p>Original character component · Twelve moods · App-event playground</p><a href="#top">Back to top ↑</a></footer>
+    <p class="sr-only" id="announcer" role="status" aria-live="polite"></p>
+  </div>
+  <script type="module" src="./demo.js"></script>
+</body>
+</html>

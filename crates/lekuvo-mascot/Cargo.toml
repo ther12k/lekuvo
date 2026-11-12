@@ -1,0 +1,13 @@
+[package]
+name = "lekuvo-mascot"
+description = "Lekuvo chameleon mood controller + baked sprite player/compositor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+image = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

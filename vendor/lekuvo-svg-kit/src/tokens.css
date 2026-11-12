@@ -1,0 +1,9 @@
+/* Optional shared palette. The SVG also has its own default fallback values. */
+:root {
+  --lekuvo-blue: #4361d7;
+  --lekuvo-blue-light: #87a3ff;
+  --lekuvo-blue-shadow: #2b409a;
+  --lekuvo-butter: #ffe4a0;
+  --lekuvo-ink: #19253d;
+  --lekuvo-eye: #fff7e8;
+}
