@@ -1,0 +1,22 @@
+/* Theme: classic — cream + royal (default; same values as 01-notch.css,
+   loaded as the "theme" sheet so switching back is a real swap). */
+
+.lk-surface { background-color: #1F2550; }
+.lk-inset   { background-color: #2B3270; }
+.lk-line    { background-color: #3D4680; }
+.lk-border  { border-color: #5A639B; }
+.lk-accent  { background-color: #4C5FD7; }
+.lk-accent-soft { background-color: #8EA7F7; }
+.lk-warm    { background-color: #F8D77B; }
+.lk-cool    { background-color: #86E3C3; }
+
+.lk-btn { background-color: #2B3270; }
+.lk-btn:hover { background-color: #3A4380; }
+.lk-btn-accent { background-color: #4C5FD7; }
+.lk-btn-accent:hover { background-color: #5D6FE0; }
+
+#pill:hover { background-color: #1E293B; }
+
+/* Vinyl disc and equalizer bars follow the accent colors. */
+.lk-vinyl { background-color: #4C5FD7; }
+.lk-eqbar { background-color: #8EA7F7; }

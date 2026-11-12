@@ -1,0 +1,21 @@
+/* Theme: sunset — coral + gold (reference --color-* tokens). */
+
+.lk-surface { background-color: #38182A; }
+.lk-inset   { background-color: #4C2438; }
+.lk-line    { background-color: #66304A; }
+.lk-border  { border-color: #A0627E; }
+.lk-accent  { background-color: #E85A55; }
+.lk-accent-soft { background-color: #FFB09E; }
+.lk-warm    { background-color: #FFD79A; }
+.lk-cool    { background-color: #7FD9C2; }
+
+.lk-btn { background-color: #4C2438; }
+.lk-btn:hover { background-color: #5F2F47; }
+.lk-btn-accent { background-color: #E85A55; }
+.lk-btn-accent:hover { background-color: #EE6E68; }
+
+#pill:hover { background-color: #431F31; }
+
+/* Vinyl disc and equalizer bars follow the accent colors. */
+.lk-vinyl { background-color: #E85A55; }
+.lk-eqbar { background-color: #FFB09E; }

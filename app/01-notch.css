@@ -1,25 +1,65 @@
 /* Lekuvo notch author styles.
-   Utilities carry the layout; these rules only add hover feedback that
-   the Tailwind v0 profile expresses through author CSS (:hover). */
+   Layout stays in Tailwind utilities; colors live in the semantic
+   `lk-*` classes below so the whole UI retheme is one stylesheet
+   swap (theme-<name>.css replaces the "theme" sheet id at runtime). */
 
-#btn-prev:hover,
-#btn-next:hover,
-#btn-close:hover {
-  background-color: #334155;
-}
-
-#btn-play:hover {
-  background-color: #2563eb;
-}
-
-#pill:hover {
-  background-color: #1e293b;
+html, body {
+  background: transparent;
 }
 
 #grip {
   cursor: move;
 }
 
-html, body {
-  background: transparent;
-}
+/* ─── Themed surfaces (classic palette; theme-*.css override) ─── */
+
+/* pill / toast / card background (reference --color-notch) */
+.lk-surface { background-color: #1F2550; }
+/* inset tracks, rows, unpressed buttons (--color-notch-2) */
+.lk-inset   { background-color: #2B3270; }
+/* hairlines: pill divider, progress tracks (--color-notch-2 + lift) */
+.lk-line    { background-color: #3D4680; }
+/* checkbox / swatch borders */
+.lk-border  { border-color: #5A639B; }
+/* royal accent: play button, active Music tab (--color-royal) */
+.lk-accent  { background-color: #4C5FD7; }
+/* periwinkle: playing bars (--color-peri) */
+.lk-accent-soft { background-color: #8EA7F7; }
+/* butter accent: focus tab, Start toggle, progress fills (--color-butter) */
+.lk-warm    { background-color: #F8D77B; }
+/* mint accent: To-do tab, done checkboxes (--color-mint) */
+.lk-cool    { background-color: #86E3C3; }
+
+/* Interactive buttons built on the inset color. */
+.lk-btn { background-color: #2B3270; }
+.lk-btn:hover { background-color: #3A4380; }
+/* The primary transport button, on the royal accent. */
+.lk-btn-accent { background-color: #4C5FD7; }
+.lk-btn-accent:hover { background-color: #5D6FE0; }
+
+#pill:hover { background-color: #1E293B; }
+
+/* Selected theme swatch ring. */
+.lk-sel { border-color: rgba(255, 255, 255, 0.92); }
+
+/* ─── Theme identity swatches (constant across themes) ─── */
+.sw-classic { background-color: #4C5FD7; }
+.sw-meadow  { background-color: #1F9A6B; }
+.sw-sunset  { background-color: #E85A55; }
+.sw-dusk    { background-color: #7356EE; }
+
+/* ─── Profile-v0 helpers: utilities the Tailwind v0 profile defers,
+       expressed as plain author CSS instead. ─── */
+.lk-nowrap { white-space: nowrap; overflow: hidden; }
+.lk-tabular { font-variant-numeric: tabular-nums; }
+.lk-caps { text-transform: uppercase; letter-spacing: 0.12em; }
+
+/* Unselected swatch border (border-transparent is outside the v0
+   utility profile, and an unset border-color falls back to
+   currentColor). */
+.lk-unsel { border-color: transparent; }
+
+/* ─── Typography (registered in main.rs via VelquView::register_font) ─── */
+body { font-family: Nunito; }
+/* Display face: clock, live label, big timers, titles. */
+.lk-display { font-family: Outfit; }

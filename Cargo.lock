@@ -595,6 +595,7 @@ dependencies = [
 name = "lekuvo-app"
 version = "0.1.0"
 dependencies = [
+ "image",
  "lekuvo-host",
  "lekuvo-mascot",
  "lekuvo-media",
@@ -1332,7 +1333,6 @@ dependencies = [
 [[package]]
 name = "velqu-reactive"
 version = "0.1.0"
-source = "git+https://github.com/ther12k/velqu-view.git?branch=host-write-api#0fba7c62b4404c4ae8c5eb5eb7a84606f84c8616"
 dependencies = [
  "rquickjs",
 ]
@@ -1340,7 +1340,6 @@ dependencies = [
 [[package]]
 name = "velqu-tailwind"
 version = "0.1.0"
-source = "git+https://github.com/ther12k/velqu-view.git?branch=host-write-api#0fba7c62b4404c4ae8c5eb5eb7a84606f84c8616"
 dependencies = [
  "cssparser",
 ]
@@ -1348,7 +1347,6 @@ dependencies = [
 [[package]]
 name = "velqu-view"
 version = "0.1.0"
-source = "git+https://github.com/ther12k/velqu-view.git?branch=host-write-api#0fba7c62b4404c4ae8c5eb5eb7a84606f84c8616"
 dependencies = [
  "cssparser",
  "fontdue",

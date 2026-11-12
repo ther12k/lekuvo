@@ -1,0 +1,21 @@
+/* Theme: dusk — violet + lilac (reference --color-* tokens). */
+
+.lk-surface { background-color: #1E1947; }
+.lk-inset   { background-color: #2C2560; }
+.lk-line    { background-color: #3B3279; }
+.lk-border  { border-color: #6A5CCB; }
+.lk-accent  { background-color: #7356EE; }
+.lk-accent-soft { background-color: #A592FC; }
+.lk-warm    { background-color: #FCD86F; }
+.lk-cool    { background-color: #7FE0C6; }
+
+.lk-btn { background-color: #2C2560; }
+.lk-btn:hover { background-color: #3A3178; }
+.lk-btn-accent { background-color: #7356EE; }
+.lk-btn-accent:hover { background-color: #8468F2; }
+
+#pill:hover { background-color: #262052; }
+
+/* Vinyl disc and equalizer bars follow the accent colors. */
+.lk-vinyl { background-color: #7356EE; }
+.lk-eqbar { background-color: #A592FC; }

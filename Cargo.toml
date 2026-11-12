@@ -17,7 +17,9 @@ publish = false
 [workspace.dependencies]
 # UI renderer — the user's native Tailwind renderer, on the host-write-api
 # branch until that API merges to main.
-velqu-view = { git = "https://github.com/ther12k/velqu-view.git", branch = "host-write-api" }
+# LOCAL CHECKOUT carrying the flex-item ordering fix (layout.rs): switch
+# back to the git source once that branch is pushed with the fix.
+velqu-view = { path = "/home/rizky/Workspace/Learning/velqu-view/crates/velqu-view" }
 
 # X11 overlay window management.
 x11rb = { version = "0.13", features = ["shape", "randr", "shm"] }

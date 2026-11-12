@@ -1,0 +1,21 @@
+/* Theme: meadow — green + lime (reference --color-* tokens). */
+
+.lk-surface { background-color: #123326; }
+.lk-inset   { background-color: #1B4535; }
+.lk-line    { background-color: #2A5B49; }
+.lk-border  { border-color: #3F8268; }
+.lk-accent  { background-color: #1F9A6B; }
+.lk-accent-soft { background-color: #79DCB4; }
+.lk-warm    { background-color: #F3E27B; }
+.lk-cool    { background-color: #79DCB4; }
+
+.lk-btn { background-color: #1B4535; }
+.lk-btn:hover { background-color: #265A46; }
+.lk-btn-accent { background-color: #1F9A6B; }
+.lk-btn-accent:hover { background-color: #2AAD7B; }
+
+#pill:hover { background-color: #163D2E; }
+
+/* Vinyl disc and equalizer bars follow the accent colors. */
+.lk-vinyl { background-color: #1F9A6B; }
+.lk-eqbar { background-color: #79DCB4; }

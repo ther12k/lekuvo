@@ -389,6 +389,7 @@ impl MoodController {
 
 /// One mood variant's animation strip: decoded RGBA frames plus the
 /// authored cycle duration (ms) and whether the animation loops.
+#[derive(Clone)]
 struct Strip {
     width: u32,
     height: u32,
@@ -430,6 +431,110 @@ impl Strip {
 /// The decoded `assets/mascot` directory.
 pub struct SpriteStore {
     strips: HashMap<(Mood, &'static str), Strip>,
+    /// Untinted copies of the same strips; `set_skin` recolors from
+    /// these so switching skins is repeatable (no drift).
+    base: HashMap<(Mood, &'static str), Strip>,
+    skin: Skin,
+}
+
+/// Chameleon color skins, matching the reference palettes. The baked
+/// sprites ship in classic blues; other skins hue-shift the blue body
+/// regions at load time (belly, tongue, and eye colors are untouched).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Skin {
+    Classic,
+    Meadow,
+    Sunset,
+    Dusk,
+}
+
+impl Skin {
+    /// Parses a skin name (`classic` default).
+    pub fn parse(name: &str) -> Skin {
+        match name {
+            "meadow" => Skin::Meadow,
+            "sunset" => Skin::Sunset,
+            "dusk" => Skin::Dusk,
+            _ => Skin::Classic,
+        }
+    }
+
+    /// Hue rotation applied to blue body pixels (degrees). The classic
+    /// body hues cluster around 229°; the targets are each skin's
+    /// `main` color hue (meadow 158°, sunset 0°, dusk 251°).
+    fn hue_delta(self) -> f32 {
+        match self {
+            Skin::Classic => 0.0,
+            Skin::Meadow => -71.0,
+            Skin::Sunset => 131.0,
+            Skin::Dusk => 22.0,
+        }
+    }
+}
+
+/// RGB -> HSV (h in degrees 0..360, s/v 0..1).
+fn rgb_to_hsv(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
+    let rf = r as f32 / 255.0;
+    let gf = g as f32 / 255.0;
+    let bf = b as f32 / 255.0;
+    let max = rf.max(gf).max(bf);
+    let min = rf.min(gf).min(bf);
+    let v = max;
+    let d = max - min;
+    let s = if max <= 0.0 { 0.0 } else { d / max };
+    let h = if d <= 0.0 {
+        0.0
+    } else if max == rf {
+        60.0 * (((gf - bf) / d) % 6.0)
+    } else if max == gf {
+        60.0 * (((bf - rf) / d) + 2.0)
+    } else {
+        60.0 * (((rf - gf) / d) + 4.0)
+    };
+    (h.rem_euclid(360.0), s, v)
+}
+
+/// HSV -> RGB (expects h in degrees, s/v 0..1).
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (u8, u8, u8) {
+    let h = h.rem_euclid(360.0) / 60.0;
+    let i = h.floor() as i32 % 6;
+    let f = h - h.floor();
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - s * f);
+    let t = v * (1.0 - s * (1.0 - f));
+    let (r, g, b) = match i {
+        0 => (v, t, p),
+        1 => (q, v, p),
+        2 => (p, v, t),
+        3 => (p, q, v),
+        4 => (t, p, v),
+        _ => (v, p, q),
+    };
+    (
+        (r * 255.0).round().clamp(0.0, 255.0) as u8,
+        (g * 255.0).round().clamp(0.0, 255.0) as u8,
+        (b * 255.0).round().clamp(0.0, 255.0) as u8,
+    )
+}
+
+/// Recolors one RGBA frame in place: blue-hued pixels (the body) are
+/// hue-rotated by `delta`; everything else (belly, tongue, eye ink,
+/// highlights) passes through untouched.
+fn tint_frame(frame: &mut [u8], delta: f32) {
+    for pixel in frame.chunks_exact_mut(4) {
+        if pixel[3] == 0 {
+            continue;
+        }
+        let (h, s, v) = rgb_to_hsv(pixel[0], pixel[1], pixel[2]);
+        // Blue body band. Near-zero saturation (whites/highlights) is
+        // unaffected by hue anyway; keep them out of the branch.
+        if (185.0..=265.0).contains(&h) && s > 0.08 {
+            let (r, g, b) = hsv_to_rgb(h + delta, s, v);
+            pixel[0] = r;
+            pixel[1] = g;
+            pixel[2] = b;
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -499,7 +604,36 @@ impl SpriteStore {
                 }
             }
         }
-        Ok(Self { strips })
+        Ok(Self {
+            base: strips.clone(),
+            strips,
+            skin: Skin::Classic,
+        })
+    }
+
+    /// The skin the strips are currently tinted with.
+    pub fn skin(&self) -> Skin {
+        self.skin
+    }
+
+    /// Re-tints every strip to `skin`. Frames are recolored from the
+    /// untouched base copies, so repeated switches are stable.
+    pub fn set_skin(&mut self, skin: Skin) {
+        if skin == self.skin {
+            return;
+        }
+        let delta = skin.hue_delta();
+        for (key, base) in &self.base {
+            if let Some(live) = self.strips.get_mut(key) {
+                for (frame, base_frame) in live.frames.iter_mut().zip(&base.frames) {
+                    frame.copy_from_slice(base_frame);
+                    if delta != 0.0 {
+                        tint_frame(frame, delta);
+                    }
+                }
+            }
+        }
+        self.skin = skin;
     }
 
     fn strip(&self, mood: Mood, variant: &str) -> Option<&Strip> {

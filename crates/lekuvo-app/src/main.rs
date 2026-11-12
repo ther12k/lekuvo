@@ -8,7 +8,7 @@
 //! events flow back through `take_events` Click ids and reactive
 //! `@click` handlers.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -38,6 +38,15 @@ const TUCK_AFTER: Duration = Duration::from_secs(12);
 const DRAG_THRESHOLD: f32 = 5.0;
 /// Cap on poll sleep so channels and timers stay responsive.
 const POLL_CAP: Duration = Duration::from_millis(100);
+/// Pomodoro session / break lengths.
+const FOCUS_SECONDS: u64 = 25 * 60;
+const BREAK_SECONDS: u64 = 5 * 60;
+/// How often the compact pill rotates between live activities.
+const LIVE_ROTATE: Duration = Duration::from_millis(3800);
+/// A toast shows for this long before auto-dismissing.
+const TOAST_LINGER: Duration = Duration::from_secs(6);
+/// Water reminder cadence while the pill is visible (demo-nudge).
+const WATER_EVERY: Duration = Duration::from_secs(45 * 60);
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -55,6 +64,8 @@ struct Settings {
     island_sticky: bool,
     /// Whether the pill automatically tucks/hides when idle.
     auto_hide: bool,
+    /// Color theme: `classic` | `meadow` | `sunset` | `dusk`.
+    theme: String,
 }
 
 impl Default for Settings {
@@ -65,9 +76,13 @@ impl Default for Settings {
             island_y: None,
             island_sticky: true,
             auto_hide: false,
+            theme: "classic".to_owned(),
         }
     }
 }
+
+/// Theme names in picker order.
+const THEMES: [&str; 4] = ["classic", "meadow", "sunset", "dusk"];
 
 fn settings_path() -> PathBuf {
     let mut path = std::env::var_os("XDG_CONFIG_HOME")
@@ -106,6 +121,12 @@ fn load_settings() -> Settings {
             .and_then(|o| o.get("auto_hide"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
+        theme: object
+            .and_then(|o| o.get("theme"))
+            .and_then(|v| v.as_str())
+            .filter(|name| THEMES.contains(&name))
+            .unwrap_or("classic")
+            .to_owned(),
     }
 }
 
@@ -116,6 +137,7 @@ fn save_settings(settings: &Settings) {
         "island_y": settings.island_y,
         "island_sticky": settings.island_sticky,
         "auto_hide": settings.auto_hide,
+        "theme": settings.theme,
     });
     if let Err(error) = std::fs::write(settings_path(), serde_json::to_string_pretty(&json).unwrap()) {
         eprintln!("lekuvo: cannot save settings: {error}");
@@ -279,6 +301,155 @@ enum InputMode {
     Tucked,
 }
 
+// ---------------------------------------------------------------------------
+// Focus timer
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct FocusTimer {
+    /// Remaining seconds in the current phase.
+    left: u64,
+    /// Phase length in seconds (25 min focus / 5 min break).
+    total: u64,
+    running: bool,
+    /// `true` during focus, `false` during a break.
+    mode_focus: bool,
+    /// Completed focus sessions today.
+    sessions: u32,
+}
+
+impl Default for FocusTimer {
+    fn default() -> Self {
+        Self { left: FOCUS_SECONDS, total: FOCUS_SECONDS, running: false, mode_focus: true, sessions: 0 }
+    }
+}
+
+impl FocusTimer {
+    fn clock(&self) -> String {
+        format!("{:02}:{:02}", self.left / 60, self.left % 60)
+    }
+
+    fn pct(&self) -> u64 {
+        if self.total == 0 {
+            return 0;
+        }
+        // Progress fills as time elapses.
+        ((self.total - self.left) * 100 / self.total).min(100)
+    }
+
+    fn reset(&mut self) {
+        self.total = if self.mode_focus { FOCUS_SECONDS } else { BREAK_SECONDS };
+        self.left = self.total;
+        self.running = false;
+    }
+
+    fn tick(&mut self) -> Option<FocusPhase> {
+        if !self.running || self.left == 0 {
+            return None;
+        }
+        self.left -= 1;
+        if self.left == 0 {
+            // Phase finished: auto-switch, pause, and report.
+            let finished = if self.mode_focus {
+                self.sessions += 1;
+                self.mode_focus = false;
+                FocusPhase::FocusDone
+            } else {
+                self.mode_focus = true;
+                FocusPhase::BreakDone
+            };
+            self.total = if self.mode_focus { FOCUS_SECONDS } else { BREAK_SECONDS };
+            self.left = self.total;
+            self.running = false;
+            return Some(finished);
+        }
+        None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FocusPhase {
+    FocusDone,
+    BreakDone,
+}
+
+/// Push the whole focus sub-state into the document in one write.
+fn write_focus(view: &mut VelquView, focus: &FocusTimer) {
+    let _ = view.write_state(
+        "focus",
+        ReactiveValue::Object(vec![
+            ("clock".to_owned(), ReactiveValue::String(focus.clock())),
+            ("pct".to_owned(), ReactiveValue::Number(focus.pct() as f64)),
+            ("running".to_owned(), ReactiveValue::Bool(focus.running)),
+            (
+                "mode".to_owned(),
+                ReactiveValue::String(
+                    if focus.mode_focus { "focus" } else { "break" }.to_owned(),
+                ),
+            ),
+            ("sessions".to_owned(), ReactiveValue::Number(focus.sessions as f64)),
+        ]),
+    );
+}
+
+/// Show a toast with the given copy; resets the linger deadline.
+fn show_toast(view: &mut VelquView, title: &str, sub: &str) {
+    let _ = view.write_state(
+        "toast",
+        ReactiveValue::Object(vec![
+            ("visible".to_owned(), ReactiveValue::Bool(true)),
+            ("title".to_owned(), ReactiveValue::String(title.to_owned())),
+            ("sub".to_owned(), ReactiveValue::String(sub.to_owned())),
+        ]),
+    );
+}
+
+fn hide_toast(view: &mut VelquView) {
+    let _ = view.write_state("toast.visible", ReactiveValue::Bool(false));
+}
+
+/// Registers the bundled UI fonts (SIL OFL 1.1, see app/fonts/). Outfit
+/// carries display text (clock, titles, timers); Nunito is the body face.
+/// Missing files or bad data are non-fatal: the renderer falls back to its
+/// bundled DejaVu faces per family lookup.
+fn register_fonts(view: &mut VelquView, app_dir: &Path) {
+    let load = |name: &str| -> Option<Vec<u8>> {
+        std::fs::read(app_dir.join("fonts").join(format!("{name}.ttf"))).ok()
+    };
+    let register = |view: &mut VelquView, family: &str, regular: &str, bold: &str| {
+        let (Some(regular), Some(bold)) = (load(regular), load(bold)) else {
+            eprintln!("lekuvo: fonts missing; {family} falls back to DejaVu");
+            return;
+        };
+        if let Err(error) = view.register_font(family, regular, Some(bold)) {
+            eprintln!("lekuvo: font {family}: {error}");
+        }
+    };
+    register(view, "Outfit", "Outfit-400", "Outfit-700");
+    register(view, "Nunito", "Nunito-400", "Nunito-800");
+}
+
+/// Applies the settings' color theme end to end: swaps the `theme`
+/// stylesheet (VelquView replaces a sheet by id and re-layouts), tells
+/// the document (picker selection ring), and re-tints the mascot.
+fn apply_theme(
+    view: &mut VelquView,
+    sprites: &mut Option<SpriteStore>,
+    app_dir: &Path,
+    settings: &Settings,
+) {
+    let name = settings.theme.as_str();
+    let css = std::fs::read_to_string(app_dir.join(format!("theme-{name}.css")))
+        .unwrap_or_else(|_| format!("/* missing theme-{name}.css; classic values persist */"));
+    if let Err(error) = view.load_stylesheet(StylesheetSource::new("theme", css)) {
+        eprintln!("lekuvo: theme stylesheet: {error}");
+    }
+    let _ = view.write_state("theme", ReactiveValue::String(name.to_owned()));
+    if let Some(sprites) = sprites.as_mut() {
+        sprites.set_skin(lekuvo_mascot::Skin::parse(name));
+    }
+}
+
 fn main() {
     let (app_dir, mascot_dir) = discover_resources();
     let mut settings = load_settings();
@@ -299,6 +470,9 @@ fn main() {
         .flatten()
         .filter_map(|entry| entry.ok().map(|e| e.path()))
         .filter(|path| path.extension().is_some_and(|ext| ext == "css"))
+        // theme-*.css are swapped at runtime by `apply_theme`; never
+        // batch-loaded, or alphabetical order would pin the last theme.
+        .filter(|path| !path.file_name().is_some_and(|name| name.to_string_lossy().starts_with("theme-")))
         .collect();
     stylesheets.sort();
     for path in &stylesheets {
@@ -308,6 +482,9 @@ fn main() {
             css,
         ));
     }
+    for diagnostic in view.css_diagnostics() {
+        eprintln!("lekuvo: css: {diagnostic}");
+    }
     for diagnostic in view.tailwind_diagnostics() {
         eprintln!("lekuvo: tailwind: {diagnostic}");
     }
@@ -315,12 +492,15 @@ fn main() {
         eprintln!("lekuvo: reactive: {diagnostic}");
     }
 
+    register_fonts(&mut view, &app_dir);
+
     let sprites = SpriteStore::load(&mascot_dir)
         .map_err(|e| eprintln!("lekuvo: {e}"))
         .ok();
     if sprites.is_none() {
         eprintln!("lekuvo: mascot sprites not found; running without the chameleon");
     }
+    let mut sprites = sprites;
 
     let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).expect("viewport");
     view.render(viewport).expect("first render");
@@ -353,8 +533,15 @@ fn main() {
 
     // Initial host-owned state: clock, zone alignment, media placeholder.
     let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
+    // PROBE: theme disabled
+    // apply_theme(&mut view, &mut sprites, &app_dir, &settings);
     if std::env::var_os("LEKUVO_DEBUG").is_some() {
         let _ = view.render(viewport);
+        if let Some(state) = view.reactive_state() {
+            for path in ["todos[0].done", "todos[1].done", "todos[2].done", "tab", "live"] {
+                eprintln!("lekuvo: state {path} = {:?}", state.get_path(path));
+            }
+        }
         if let Ok(facts) = view.layout_facts(viewport) {
             for fact in &facts.nodes {
                 eprintln!(
@@ -397,6 +584,13 @@ fn main() {
     let mut mascot_playback = Instant::now();
     let mut media_playing = false;
     let mut running = true;
+    let mut focus = FocusTimer::default();
+    let mut toast_deadline: Option<Instant> = None;
+    let mut last_live_rotate = Instant::now();
+    let mut live_tick: usize = 0;
+    let mut live: &'static str = "idle";
+    let mut last_water_nudge = Instant::now();
+    write_focus(&mut view, &focus);
     let debug_mode = std::env::var_os("LEKUVO_DEBUG").is_some();
     let mut debug_events: Vec<String> = Vec::new();
 
@@ -582,11 +776,26 @@ fn main() {
             }
         }
 
-        // Clock tick.
+        // Clock + focus tick.
         if now.duration_since(last_clock) >= CLOCK_TICK {
             last_clock = now;
             let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
             dirty = true;
+            if let Some(phase) = focus.tick() {
+                let (title, sub) = match phase {
+                    FocusPhase::FocusDone => (
+                        "Session done! Take 5 🎉",
+                        "Lekuvo says: stretch those legs.",
+                    ),
+                    FocusPhase::BreakDone => {
+                        ("Break over. Ready for round 2?", "Press Start when you are.")
+                    }
+                };
+                show_toast(&mut view, title, sub);
+                toast_deadline = Some(now + TOAST_LINGER);
+                moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
+            }
+            write_focus(&mut view, &focus);
             if debug_mode {
                 eprintln!(
                     "lekuvo: frames={} events={} tail={:?}",
@@ -595,6 +804,48 @@ fn main() {
                     debug_events.iter().rev().take(4).collect::<Vec<_>>()
                 );
                 debug_events.clear();
+            }
+        }
+
+        // Live-activity rotation: alternate music/focus in the pill when
+        // several activities compete for attention.
+        if now.duration_since(last_live_rotate) >= LIVE_ROTATE {
+            last_live_rotate = now;
+            let activities: &[&str] = if media_playing && focus.running {
+                &["music", "focus"]
+            } else if media_playing {
+                &["music"]
+            } else if focus.running {
+                &["focus"]
+            } else {
+                &["idle"]
+            };
+            live_tick = live_tick.wrapping_add(1);
+            let next = activities[live_tick % activities.len()];
+            if next != live {
+                live = next;
+                let _ = view.write_state("live", ReactiveValue::String(live.to_owned()));
+                dirty = true;
+            }
+        }
+
+        // Toast lifecycle.
+        if let Some(deadline) = toast_deadline
+            && now >= deadline
+        {
+            toast_deadline = None;
+            hide_toast(&mut view);
+            dirty = true;
+        }
+
+        // Water nudge: a periodic hydration reminder (demo toast source).
+        if now.duration_since(last_water_nudge) >= WATER_EVERY {
+            last_water_nudge = now;
+            if toast_deadline.is_none() {
+                show_toast(&mut view, "Drink water!", "Stay hydrated — Lekuvo cares.");
+                toast_deadline = Some(now + TOAST_LINGER);
+                moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
+                dirty = true;
             }
         }
 
@@ -637,6 +888,60 @@ fn main() {
                     }
                     Some("btn-prev") => {
                         let _ = media.commands.send(lekuvo_media::MediaCommand::Previous);
+                    }
+                    Some("btn-focus-toggle") => {
+                        focus.running = !focus.running;
+                        if focus.running && focus.left == 0 {
+                            focus.reset();
+                        }
+                        write_focus(&mut view, &focus);
+                        moods.trigger(if focus.running {
+                            lekuvo_mascot::AppEvent::FocusStart
+                        } else {
+                            lekuvo_mascot::AppEvent::FocusEnd
+                        });
+                        dirty = true;
+                    }
+                    Some("btn-focus-reset") => {
+                        focus.reset();
+                        write_focus(&mut view, &focus);
+                        dirty = true;
+                    }
+                    Some(id) if id.starts_with("theme-") => {
+                        let name = id.trim_start_matches("theme-");
+                        if THEMES.contains(&name) && settings.theme != name {
+                            settings.theme = name.to_owned();
+                            // PROBE: theme disabled
+    // apply_theme(&mut view, &mut sprites, &app_dir, &settings);
+                            save_settings(&settings);
+                            dirty = true;
+                        }
+                    }
+                    Some(id) if id.starts_with("todo-") => {
+                        // Toggle a to-do item: rewrite the whole array so
+                        // every list binding re-evaluates atomically.
+                        if let Ok(index) = id.trim_start_matches("todo-").parse::<usize>()
+                            && let Some(state) = view.reactive_state()
+                            && let velqu_view::ReactiveValue::Array(items) = state.get_path("todos")
+                            && index < items.len()
+                        {
+                            let mut next = items.to_vec();
+                            if let ReactiveValue::Object(fields) = &mut next[index] {
+                                for (key, value) in fields.iter_mut() {
+                                    if key == "done" {
+                                        *value = ReactiveValue::Bool(!value.truthy());
+                                    }
+                                }
+                            }
+                            let _ = view.write_state("todos", ReactiveValue::Array(next));
+                            dirty = true;
+                        }
+                    }
+                    Some("toast") => {
+                        // Clicking a toast dismisses it.
+                        toast_deadline = None;
+                        hide_toast(&mut view);
+                        dirty = true;
                     }
                     Some("pill") => {
                         moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
@@ -695,7 +1000,7 @@ fn main() {
                     if let Ok(facts) = view.layout_facts(viewport) {
                         for fact in &facts.nodes {
                             let variant = match fact.fixture_id.as_str() {
-                                "mascot-compact" => "compact",
+                                "mascot-compact" | "mascot-toast" => "compact",
                                 "mascot-full" => "full",
                                 _ => continue,
                             };
@@ -713,6 +1018,17 @@ fn main() {
                             }
                         }
                     }
+                }
+                // Debug escape hatch: dump the fully composited frame
+                // (document + mascot sprites) to PNG.
+                if let Some(path) = std::env::var_os("LEKUVO_SNAPSHOT") {
+                    let _ = image::save_buffer(
+                        std::path::Path::new(&path),
+                        &frame_buffer,
+                        WIN_W as u32,
+                        WIN_H as u32,
+                        image::ColorType::Rgba8,
+                    );
                 }
                 if win.present(&frame_buffer).is_err() {
                     running = false;
@@ -811,6 +1127,9 @@ fn input_rects(view: &mut VelquView, viewport: Viewport, mode: InputMode) -> Vec
                 height: fact.height as u16 + (pad as u16) * 2,
             })
     };
+    // Hidden `vx-show` elements leave no layout facts, so the toast only
+    // contributes a rectangle while it is actually visible.
+    let toast_rect = fact_rect("toast");
     match mode {
         InputMode::Expanded => {
             let mut rects = Vec::new();
@@ -820,9 +1139,10 @@ fn input_rects(view: &mut VelquView, viewport: Viewport, mode: InputMode) -> Vec
             if let Some(pill) = fact_rect("pill") {
                 rects.push(pill);
             }
+            rects.extend(toast_rect);
             rects
         }
-        InputMode::Collapsed => fact_rect("pill").into_iter().collect(),
+        InputMode::Collapsed => fact_rect("pill").into_iter().chain(toast_rect).collect(),
         // The tucked pill keeps opacity (it is display-laid-out, merely
         // transparent), so the sensor strip is the pill's own rect.
         InputMode::Tucked => fact_rect("pill").into_iter().collect(),
