@@ -52,28 +52,59 @@ out, frames = sys.argv[1], int(sys.argv[2])
 MOODS = ["lazy","awake","wave","listening","dance","sleep",
          "surprised","dizzy","focus","thinking","success","alert"]
 
+DEFAULT_CYCLES = {
+    "dance": 900,
+    "wave": 1650,
+    "listening": 1800,
+    "thinking": 1800,
+    "alert": 2200,
+    "dizzy": 2300,
+    "sleep": 5000,
+    "awake": 5400,
+    "success": 1650,
+    "surprised": 480,
+    "focus": 10000,
+    "lazy": 9000,
+}
+
+LOOPING_MOODS = {
+    "lazy", "awake", "listening", "dance", "sleep", "focus", "thinking"
+}
+
 manifest = {"moods": {}}
+
 for variant in ("full", "compact"):
     atlas = Image.open(os.path.join(out, f"atlas-{variant}.png")).convert("RGBA")
     slot = atlas.width // frames
     for row, mood in enumerate(MOODS):
+        # Extract all frames
+        cells = [
+            atlas.crop((i * slot, row * slot, (i + 1) * slot, (row + 1) * slot))
+            for i in range(frames)
+        ]
+        
+        # Check if all frames are completely identical (truly static)
+        all_identical = all(list(cells[i].getdata()) == list(cells[0].getdata()) for i in range(1, frames))
+        
         kept = 0
-        for index in range(frames):
-            cell = atlas.crop((index * slot, row * slot, (index + 1) * slot, (row + 1) * slot))
-            # Drop trailing frames that render identically (static moods):
-            # keeping them wastes memory and adds no animation.
-            if kept > 0:
-                prev = Image.open(os.path.join(out, f"{mood}-{variant}-{kept-1:02d}.png"))
-                if list(cell.getdata()) == list(prev.getdata()):
-                    continue
-            cell.save(os.path.join(out, f"{mood}-{variant}-{kept:02d}.png"))
-            kept += 1
-        manifest["moods"].setdefault(mood, {})[variant] = kept
-        print(f"{mood}-{variant}: {kept} frames")
+        if all_identical:
+            cells[0].save(os.path.join(out, f"{mood}-{variant}-00.png"))
+            kept = 1
+        else:
+            for i, cell in enumerate(cells):
+                cell.save(os.path.join(out, f"{mood}-{variant}-{i:02d}.png"))
+            kept = frames
+            
+        manifest["moods"].setdefault(mood, {})[variant] = {
+            "frames": kept,
+            "duration_ms": DEFAULT_CYCLES.get(mood, 1800),
+            "loop": mood in LOOPING_MOODS
+        }
+        print(f"{mood}-{variant}: {kept} frames (cycle {DEFAULT_CYCLES.get(mood, 1800)}ms)")
 
 with open(os.path.join(out, "manifest.json"), "w") as handle:
     json.dump(manifest, handle, indent=2, sort_keys=True)
-print("manifest.json written")
+print("manifest.json written successfully")
 PYEOF
 
 echo "baked into $OUT"

@@ -26,8 +26,6 @@ const WIN_W: u16 = 560;
 const WIN_H: u16 = 372;
 /// Input rectangles grow by this much so edges are not hairline targets.
 const INPUT_PAD: i16 = 6;
-/// Mascot playback.
-const MASCOT_FPS: u32 = 10;
 /// Keep-above re-assert cadence (the Layzee-proven value).
 const ABOVE_TICK: Duration = Duration::from_secs(2);
 /// Clock refresh cadence.
@@ -147,11 +145,67 @@ impl AssetResolver for DirAssets {
     }
 }
 
-fn resolve_dir(candidates: &[&str]) -> Option<PathBuf> {
-    candidates
-        .iter()
+fn resolve_dir(candidates: &[PathBuf]) -> Option<PathBuf> {
+    candidates.iter().find(|path| path.exists()).cloned()
+}
+
+/// Resource roots, in priority order:
+/// 1. `LEKUVO_APP` / `LEKUVO_MASCOT` environment overrides.
+/// 2. An installed data dir: `$XDG_DATA_HOME/lekuvo` or
+///    `~/.local/share/lekuvo` (relative to the executable for
+///    system-wide installs: `<exe>/../share/lekuvo`).
+/// 3. The development checkout, relative to the executable or cwd.
+fn discover_resources() -> (PathBuf, PathBuf) {
+    let exe = std::env::current_exe().ok();
+    let mut app_candidates: Vec<PathBuf> = Vec::new();
+    let mut mascot_candidates: Vec<PathBuf> = Vec::new();
+
+    if let Some(dir) = std::env::var_os("LEKUVO_APP") {
+        app_candidates.push(PathBuf::from(dir));
+    }
+    if let Some(dir) = std::env::var_os("LEKUVO_MASCOT") {
+        mascot_candidates.push(PathBuf::from(dir));
+    }
+
+    // Installed layout: <prefix>/bin/lekuvo + <prefix>/share/lekuvo/{app,assets}
+    let xdg_data = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
-        .find(|path| path.exists())
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".local/share")
+        });
+    let installed = xdg_data.join("lekuvo");
+    app_candidates.push(installed.join("app"));
+    mascot_candidates.push(installed.join("assets/mascot"));
+    if let Some(exe) = exe.as_deref() {
+        let exe = exe.to_path_buf();
+        if let Some(bin) = exe.parent()
+            && let Some(prefix) = bin.parent()
+        {
+            let share = prefix.join("share/lekuvo");
+            app_candidates.push(share.join("app"));
+            mascot_candidates.push(share.join("assets/mascot"));
+            // Development checkout: <repo>/target/(debug|release)/lekuvo
+            if let Some(target) = bin.parent()
+                && let Some(repo) = target.parent()
+            {
+                app_candidates.push(repo.join("app"));
+                mascot_candidates.push(repo.join("assets/mascot"));
+            }
+        }
+    }
+    // Last resort: cwd-relative (cargo run from the crate).
+    app_candidates.push(PathBuf::from("app"));
+    mascot_candidates.push(PathBuf::from("assets/mascot"));
+
+    let app = resolve_dir(&app_candidates)
+        .unwrap_or_else(|| panic!(
+            "cannot find the lekuvo app/ document directory; set LEKUVO_APP or install with `./install.sh`"
+        ));
+    // The mascot is optional (the notch runs without it); pick the first
+    // existing candidate or the last one for the warning message.
+    let mascot = resolve_dir(&mascot_candidates)
+        .unwrap_or_else(|| mascot_candidates.last().cloned().unwrap_or_default());
+    (app, mascot)
 }
 
 // ---------------------------------------------------------------------------
@@ -226,10 +280,7 @@ enum InputMode {
 }
 
 fn main() {
-    let app_dir = resolve_dir(&["app", "../app", "../../app"])
-        .or_else(|| std::env::var_os("LEKUVO_APP").map(PathBuf::from))
-        .unwrap_or_else(|| panic!("cannot find the app/ document directory"));
-    let mascot_dir = resolve_dir(&["assets/mascot", "../assets/mascot", "../../assets/mascot"]);
+    let (app_dir, mascot_dir) = discover_resources();
     let mut settings = load_settings();
 
     // --- VelquView document ------------------------------------------------
@@ -264,9 +315,9 @@ fn main() {
         eprintln!("lekuvo: reactive: {diagnostic}");
     }
 
-    let sprites = mascot_dir
-        .as_deref()
-        .and_then(|dir| SpriteStore::load(dir).map_err(|e| eprintln!("lekuvo: {e}")).ok());
+    let sprites = SpriteStore::load(&mascot_dir)
+        .map_err(|e| eprintln!("lekuvo: {e}"))
+        .ok();
     if sprites.is_none() {
         eprintln!("lekuvo: mascot sprites not found; running without the chameleon");
     }
@@ -338,15 +389,19 @@ fn main() {
     let mut last_clock = Instant::now() - CLOCK_TICK;
     let mut last_anim_step = Instant::now();
     let mut last_present = Instant::now() - Duration::from_millis(1000);
-    let mut mascot_epoch = Instant::now();
+    // Controller clock: ms since launch, NEVER reset — reaction deadlines
+    // depend on it staying monotonic.
+    let launched_at = Instant::now();
+    // Playback clock: restarts when the visible mood changes so each
+    // animation starts from its first frame.
+    let mut mascot_playback = Instant::now();
     let mut media_playing = false;
     let mut running = true;
-    let mut loop_count: u64 = 0;
+    let debug_mode = std::env::var_os("LEKUVO_DEBUG").is_some();
     let mut debug_events: Vec<String> = Vec::new();
 
     while running {
         let now = Instant::now();
-        loop_count += 1;
 
         // Poll deadline: the nearest future timer, capped for channel
         // latency. Elapsed timers saturate to zero and must be skipped,
@@ -384,9 +439,9 @@ fn main() {
             debug_events.push(format!("{:?}", event));
             match event {
                 HostEvent::Motion { x, y, rx, ry } => {
-                    if let Some((_, _, axr, ayr)) = press_anchor
+                    if let Some((axr, ayr, _, _)) = press_anchor
                         && !dragging
-                        && (rx - axr as f32).abs() + (ry - ayr as f32).abs() > DRAG_THRESHOLD
+                        && (rx - axr).abs() + (ry - ayr).abs() > DRAG_THRESHOLD
                     {
                         dragging = true;
                     }
@@ -507,6 +562,16 @@ fn main() {
                     dirty = true;
                 }
                 None => {
+                    // Full empty state: title/artist/playing must not keep
+                    // stale values from the closed player.
+                    let _ = view.write_state(
+                        "media",
+                        ReactiveValue::Object(vec![
+                            ("playing".to_owned(), ReactiveValue::Bool(false)),
+                            ("title".to_owned(), ReactiveValue::String("Nothing playing".to_owned())),
+                            ("artist".to_owned(), ReactiveValue::String(String::new())),
+                        ]),
+                    );
                     let _ = view.write_state("hasMedia", ReactiveValue::Bool(false));
                     if media_playing {
                         media_playing = false;
@@ -522,11 +587,10 @@ fn main() {
             last_clock = now;
             let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
             dirty = true;
-            if std::env::var_os("LEKUVO_DEBUG").is_some() {
+            if debug_mode {
                 eprintln!(
-                    "lekuvo: frames={} loops={} events={} tail={:?}",
+                    "lekuvo: frames={} events={} tail={:?}",
                     view.frames_rendered(),
-                    loop_count,
                     debug_events.len(),
                     debug_events.iter().rev().take(4).collect::<Vec<_>>()
                 );
@@ -576,7 +640,6 @@ fn main() {
                     }
                     Some("pill") => {
                         moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
-                        mascot_epoch = Instant::now();
                     }
                     _ => {}
                 }
@@ -584,44 +647,69 @@ fn main() {
         }
         view.pump_reactive(&batch);
 
-        // Mascot clock: expire temporary reactions.
-        moods.tick(now.duration_since(mascot_epoch).as_millis() as u64);
+        // Controller clock (monotonic, never reset): expire reactions.
+        moods.tick(now.duration_since(launched_at).as_millis() as u64);
+        // A resolved-mood change restarts visual playback from frame 0
+        // and requests an immediate repaint.
+        if moods.changed {
+            moods.changed = false;
+            mascot_playback = now;
+            dirty = true;
+        }
 
-        // Render decision.
-        let mascot_live = sprites.is_some()
-            && !view
+        // Render decision: dirty UI, active document transitions, or an
+        // upcoming mascot frame in ANY visible variant (compact pill
+        // mascot and/or the full card mascot).
+        let is_tucked = view
+            .reactive_state()
+            .map(|s| s.get_path("tucked").truthy())
+            .unwrap_or(false);
+        let mascot_elapsed = now.duration_since(mascot_playback).as_millis() as u64;
+        let mascot_frame_due = sprites.is_some() && !is_tucked && {
+            let expanded = view
                 .reactive_state()
-                .map(|s| s.get_path("tucked").truthy())
-                .unwrap_or(false)
-            && sprites
+                .map(|s| s.get_path("expanded").truthy())
+                .unwrap_or(false);
+            // Both variants animate while expanded; only compact otherwise.
+            let variants: &[&str] = if expanded {
+                &["compact", "full"]
+            } else {
+                &["compact"]
+            };
+            let next = sprites
                 .as_ref()
-                .is_some_and(|s| s.is_animated(moods.mood(), "compact"));
-        let due_present = now.duration_since(last_present) >= Duration::from_millis(100);
-        if dirty || view.has_active_animations() || (mascot_live && due_present) {
+                .map(|s| s.ms_to_next_frame(moods.mood(), variants, mascot_elapsed))
+                .unwrap_or(u64::MAX);
+            next != u64::MAX && next <= now.duration_since(last_present).as_millis() as u64 + 1
+        };
+        if dirty || view.has_active_animations() || mascot_frame_due {
             let dt = now.duration_since(last_anim_step);
             last_anim_step = now;
             view.step_animations_by(dt);
             if let Ok(result) = view.render(viewport) {
                 frame_buffer.clear();
                 frame_buffer.extend_from_slice(result.frame.pixels());
-                if let Some(sprites) = sprites.as_ref() {
-                    let is_tucked = view
-                        .reactive_state()
-                        .map(|s| s.get_path("tucked").truthy())
-                        .unwrap_or(false);
-                    if !is_tucked {
-                        let elapsed = now.duration_since(mascot_epoch).as_millis() as u64;
-                        if let Ok(facts) = view.layout_facts(viewport) {
-                            for fact in &facts.nodes {
-                                if fact.fixture_id == "mascot-compact" {
-                                    if let Some((rgba, sw, sh)) = sprites.frame(moods.mood(), "compact", elapsed, MASCOT_FPS) {
-                                        composite(&mut frame_buffer, WIN_W as u32, (fact.x as u32, fact.y as u32, fact.width as u32, fact.height as u32), rgba, sw, sh);
-                                    }
-                                } else if fact.fixture_id == "mascot-full" {
-                                    if let Some((rgba, sw, sh)) = sprites.frame(moods.mood(), "full", elapsed, MASCOT_FPS) {
-                                        composite(&mut frame_buffer, WIN_W as u32, (fact.x as u32, fact.y as u32, fact.width as u32, fact.height as u32), rgba, sw, sh);
-                                    }
-                                }
+                if let Some(sprites) = sprites.as_ref()
+                    && !is_tucked
+                {
+                    if let Ok(facts) = view.layout_facts(viewport) {
+                        for fact in &facts.nodes {
+                            let variant = match fact.fixture_id.as_str() {
+                                "mascot-compact" => "compact",
+                                "mascot-full" => "full",
+                                _ => continue,
+                            };
+                            if let Some((rgba, sw, sh)) =
+                                sprites.frame(moods.mood(), variant, mascot_elapsed)
+                            {
+                                composite(
+                                    &mut frame_buffer,
+                                    WIN_W as u32,
+                                    (fact.x as u32, fact.y as u32, fact.width as u32, fact.height as u32),
+                                    rgba,
+                                    sw,
+                                    sh,
+                                );
                             }
                         }
                     }

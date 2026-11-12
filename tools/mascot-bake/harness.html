@@ -50,34 +50,53 @@
       grid.appendChild(row);
     }
 
-    // Two frames so every element has upgraded, applied its mood, and
-    // started (or omitted) its CSS animations before we freeze.
+    // Two animation frames so elements are connected and rendered.
     await new Promise((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(resolve)),
     );
+
+    for (const { mascot, mood } of elements) {
+      mascot.setMood(mood);
+      mascot.removeAttribute("data-paused");
+      if (typeof mascot.resume === "function") mascot.resume();
+    }
+
+    await new Promise((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(resolve)),
+    );
+
+    // Primary cycle per mood in milliseconds (from authored CSS keyframes).
+    const DEFAULT_CYCLES = {
+      dance: 900,
+      wave: 1650,
+      listening: 1800,
+      thinking: 1800,
+      alert: 2200,
+      dizzy: 2300,
+      sleep: 5000,
+      awake: 5400,
+      success: 1650,
+      surprised: 480,
+      focus: 10000,
+      lazy: 9000,
+    };
 
     for (const { mascot, mood, index } of elements) {
-      mascot.setMood(mood);
-    }
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
-    );
-
-    for (const { mascot, index } of elements) {
-      const animations = mascot.getAnimations({ subtree: true });
+      const root = mascot.shadowRoot || mascot;
+      const animations = root.getAnimations({ subtree: true });
       if (animations.length === 0) continue;
-      let cycle = 0;
-      for (const animation of animations) {
-        const timing = animation.effect.getTiming();
-        const duration = Number.isFinite(timing.duration) ? timing.duration : 0;
-        const delay = Number.isFinite(timing.delay) ? timing.delay : 0;
-        cycle = Math.max(cycle, duration + delay);
-      }
-      if (cycle <= 0) cycle = 2000;
+
+      let cycle = DEFAULT_CYCLES[mood] || 1800;
+      // Seek each animation to its phase in the mood's cycle
       const at = (index / frames) * cycle;
       for (const animation of animations) {
         animation.pause();
-        animation.currentTime = at;
+        const d = animation.effect ? animation.effect.getTiming().duration : 0;
+        if (d > 0) {
+          animation.currentTime = at % d;
+        } else {
+          animation.currentTime = at;
+        }
       }
     }
 

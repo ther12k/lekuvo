@@ -5,12 +5,13 @@
 //! `state-machine.js` (deterministic, DOM-independent): persistent
 //! activity channels with priorities, one expiring temporary reaction,
 //! and priority-aware resolution. The kit's JS timers become a `tick`
-//! the host drives from its own clock.
+//! the host drives from its own monotonic clock (never reset).
 //!
 //! The artwork itself is baked at build time from the kit's original
 //! SVG (`tools/mascot-bake`) into per-mood PNG frame strips; this crate
 //! decodes them once and composites frames onto the rendered notch
-//! frame with source-over blending.
+//! frame with source-over blending. Each strip carries its authored
+//! cycle duration so native playback preserves the original pacing.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -81,6 +82,22 @@ impl Mood {
             _ => Mood::Lazy,
         }
     }
+
+    /// All moods in the kit's canonical order.
+    pub const ALL: [Mood; 12] = [
+        Mood::Lazy,
+        Mood::Awake,
+        Mood::Wave,
+        Mood::Listening,
+        Mood::Dance,
+        Mood::Sleep,
+        Mood::Surprised,
+        Mood::Dizzy,
+        Mood::Focus,
+        Mood::Thinking,
+        Mood::Success,
+        Mood::Alert,
+    ];
 }
 
 /// The seventeen application events the kit defines.
@@ -110,16 +127,43 @@ pub enum AppEvent {
     Sleep,
     /// Leave sleep, wave briefly, then resolve remaining activities.
     Wake,
-    /// Temporary `wave`.
+    /// Temporary `wave` (priority 80).
     PointerWave,
-    /// Temporary `success`.
+    /// Temporary `success` (priority 80).
     TaskCompleted,
-    /// Temporary `alert`.
+    /// Temporary `alert` (priority 85).
     ReminderDue,
-    /// Temporary `surprised`, higher priority than a reminder.
+    /// Temporary `surprised` (priority 90, higher than a reminder).
     Error,
-    /// Temporary `dizzy`.
+    /// Temporary `dizzy` (priority 80).
     Dizzy,
+}
+
+/// Default durations (ms) per reaction, mirroring the kit.
+const DURATIONS: &[(AppEvent, u64)] = &[
+    (AppEvent::PointerWave, 1500),
+    (AppEvent::TaskCompleted, 1800),
+    (AppEvent::ReminderDue, 2600),
+    (AppEvent::Error, 1600),
+    (AppEvent::Dizzy, 1800),
+];
+
+fn default_duration(event: AppEvent) -> u64 {
+    DURATIONS
+        .iter()
+        .find(|(e, _)| *e == event)
+        .map(|(_, d)| *d)
+        .unwrap_or(1500)
+}
+
+/// Default priorities per reaction, mirroring the kit exactly:
+/// wave/success/dizzy = 80, reminder = 85, error = 90.
+fn default_priority(event: AppEvent) -> u32 {
+    match event {
+        AppEvent::ReminderDue => 85,
+        AppEvent::Error => 90,
+        _ => 80,
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -145,6 +189,8 @@ pub struct MoodController {
     temporary: Option<Temporary>,
     sequence: u64,
     current: Mood,
+    /// Monotonic controller clock in ms; the host MUST advance it with
+    /// an always-increasing value and never reset it.
     clock_ms: u64,
     /// Set when the resolved mood changed; the host clears it.
     pub changed: bool,
@@ -173,6 +219,11 @@ impl MoodController {
     /// The currently resolved mood.
     pub fn mood(&self) -> Mood {
         self.current
+    }
+
+    /// The controller clock (ms since launch).
+    pub fn clock_ms(&self) -> u64 {
+        self.clock_ms
     }
 
     fn resolve(&self) -> Entry {
@@ -216,35 +267,32 @@ impl MoodController {
 
     /// A manual selection. Without a duration it clears channels and
     /// the temporary and keeps `mood`; with a duration it is a
-    /// priority-aware temporary reaction. Returns whether a temporary
-    /// request was accepted.
-    pub fn set_mood(&mut self, mood: Mood, duration_ms: Option<u64>) -> bool {
-        match duration_ms {
-            None => {
-                self.temporary = None;
-                self.channels.clear();
-                self.base = mood;
-                self.publish();
-                true
-            }
-            Some(duration) => {
-                let priority = 80;
-                if (priority as u32) < self.resolve().priority {
-                    return false;
-                }
-                self.sequence += 1;
-                self.temporary = Some(Temporary {
-                    entry: Entry {
-                        mood,
-                        priority,
-                        sequence: self.sequence,
-                    },
-                    deadline_ms: self.clock_ms.saturating_add(duration),
-                });
-                self.publish();
-                true
-            }
+    /// priority-aware temporary reaction at the given priority.
+    /// Returns whether a temporary request was accepted.
+    pub fn set_mood_with(&mut self, mood: Mood, duration_ms: u64, priority: u32) -> bool {
+        if priority < self.resolve().priority {
+            return false;
         }
+        self.sequence += 1;
+        self.temporary = Some(Temporary {
+            entry: Entry {
+                mood,
+                priority,
+                sequence: self.sequence,
+            },
+            deadline_ms: self.clock_ms.saturating_add(duration_ms),
+        });
+        self.publish();
+        true
+    }
+
+    /// A manual selection without a duration: clears all activity and
+    /// keeps `mood` as the base.
+    pub fn set_mood(&mut self, mood: Mood) {
+        self.temporary = None;
+        self.channels.clear();
+        self.base = mood;
+        self.publish();
     }
 
     fn channel(&mut self, key: &'static str, mood: Mood, priority: u32) {
@@ -266,9 +314,9 @@ impl MoodController {
         self.publish();
     }
 
-    /// Handles one application event. Returns `false` only for events
-    /// the controller does not know (none exist in this enum, so the
-    /// return is `true` for parity with the kit's `trigger`).
+    /// Handles one application event. The controller clock must be
+    /// advanced (via [`tick`](Self::tick)) before events so deadlines
+    /// are computed against the current time.
     pub fn trigger(&mut self, event: AppEvent) -> bool {
         match event {
             AppEvent::Idle => self.set_base(Mood::Lazy),
@@ -288,36 +336,38 @@ impl MoodController {
             AppEvent::Wake => {
                 self.channels.retain(|(k, _)| *k != "sleep");
                 self.base = Mood::Awake;
-                self.set_mood(Mood::Wave, Some(1500));
+                self.set_mood_with(Mood::Wave, 1500, 80);
                 self.publish();
             }
-            AppEvent::PointerWave => {
-                self.set_mood(Mood::Wave, Some(1500));
-            }
-            AppEvent::TaskCompleted => {
-                self.set_mood(Mood::Success, Some(1800));
-            }
-            AppEvent::ReminderDue => {
-                self.set_mood(Mood::Alert, Some(2600));
-            }
-            AppEvent::Error => {
-                self.set_mood(Mood::Surprised, Some(1600));
-            }
-            AppEvent::Dizzy => {
-                self.set_mood(Mood::Dizzy, Some(1800));
+            // Temporary reactions: kit-priority-aware, expiring.
+            AppEvent::PointerWave
+            | AppEvent::TaskCompleted
+            | AppEvent::ReminderDue
+            | AppEvent::Error
+            | AppEvent::Dizzy => {
+                let mood = match event {
+                    AppEvent::PointerWave => Mood::Wave,
+                    AppEvent::TaskCompleted => Mood::Success,
+                    AppEvent::ReminderDue => Mood::Alert,
+                    AppEvent::Error => Mood::Surprised,
+                    _ => Mood::Dizzy,
+                };
+                self.set_mood_with(mood, default_duration(event), default_priority(event));
             }
         }
         true
     }
 
-    /// Advances the controller clock (an absolute millisecond counter
-    /// the host owns, e.g. time since launch) and expires the temporary
-    /// reaction when its deadline passes — the Rust form of the kit's
-    /// `setTimeout`.
+    /// Advances the controller clock (an absolute, always-increasing
+    /// millisecond counter the host owns, e.g. time since launch) and
+    /// expires the temporary reaction when its deadline passes — the
+    /// Rust form of the kit's `setTimeout`. Never reset this value.
     pub fn tick(&mut self, now_ms: u64) {
-        self.clock_ms = now_ms;
+        // Defensive monotonic clamp: a host bug must not extend
+        // deadlines by rewinding the clock.
+        self.clock_ms = self.clock_ms.max(now_ms);
         if let Some(temp) = &self.temporary
-            && now_ms >= temp.deadline_ms
+            && self.clock_ms >= temp.deadline_ms
         {
             self.temporary = None;
             self.publish();
@@ -337,11 +387,44 @@ impl MoodController {
 // Sprite store: baked PNG frames + source-over compositing.
 // ---------------------------------------------------------------------------
 
-/// One mood variant's animation strip: decoded RGBA frames.
+/// One mood variant's animation strip: decoded RGBA frames plus the
+/// authored cycle duration (ms) and whether the animation loops.
 struct Strip {
     width: u32,
     height: u32,
     frames: Vec<Vec<u8>>,
+    duration_ms: u64,
+    looping: bool,
+}
+
+impl Strip {
+    /// Duration of one frame in the cycle.
+    fn frame_ms(&self) -> u64 {
+        if self.frames.is_empty() {
+            return u64::MAX;
+        }
+        (self.duration_ms / self.frames.len() as u64).max(1)
+    }
+
+    fn frame_index(&self, elapsed_ms: u64) -> usize {
+        if self.frames.len() <= 1 {
+            return 0;
+        }
+        if !self.looping && elapsed_ms >= self.duration_ms {
+            return self.frames.len() - 1;
+        }
+        ((elapsed_ms / self.frame_ms()) % self.frames.len() as u64) as usize
+    }
+
+    /// Milliseconds until the next frame boundary from `elapsed_ms`
+    /// (used for redraw scheduling).
+    fn ms_to_next_frame(&self, elapsed_ms: u64) -> u64 {
+        let frame_ms = self.frame_ms();
+        if frame_ms == u64::MAX {
+            return u64::MAX;
+        }
+        frame_ms - (elapsed_ms % frame_ms)
+    }
 }
 
 /// The decoded `assets/mascot` directory.
@@ -350,9 +433,26 @@ pub struct SpriteStore {
 }
 
 #[derive(serde::Deserialize)]
+struct ManifestEntry {
+    frames: u32,
+    #[serde(default = "default_duration_ms")]
+    duration_ms: u64,
+    #[serde(default = "default_looping", rename = "loop")]
+    loops: bool,
+}
+
+fn default_duration_ms() -> u64 {
+    1800
+}
+
+fn default_looping() -> bool {
+    true
+}
+
+#[derive(serde::Deserialize)]
 struct Manifest {
-    /// `"dance": {"full": 8, "compact": 8}` — frame counts per variant.
-    moods: HashMap<String, HashMap<String, u32>>,
+    /// `"dance": {"full": {frames, duration_ms, loop}, ...}`.
+    moods: HashMap<String, HashMap<String, ManifestEntry>>,
 }
 
 impl SpriteStore {
@@ -368,15 +468,15 @@ impl SpriteStore {
         let mut strips = HashMap::new();
         for (mood_name, variants) in &manifest.moods {
             let mood = Mood::parse(mood_name);
-            for (variant, count) in variants {
+            for (variant, entry) in variants {
                 let variant_key: &'static str = match variant.as_str() {
                     "full" => "full",
                     "compact" => "compact",
                     _ => continue,
                 };
-                let mut frames = Vec::with_capacity(*count as usize);
+                let mut frames = Vec::with_capacity(entry.frames as usize);
                 let (mut width, mut height) = (0u32, 0u32);
-                for index in 0..*count {
+                for index in 0..entry.frames {
                     let path = dir.join(format!("{mood_name}-{variant}-{index:02}.png"));
                     let decoded = image::open(&path)
                         .map_err(|e| format!("decode {}: {e}", path.display()))?
@@ -392,6 +492,8 @@ impl SpriteStore {
                             width,
                             height,
                             frames,
+                            duration_ms: entry.duration_ms,
+                            looping: entry.loops,
                         },
                     );
                 }
@@ -400,44 +502,38 @@ impl SpriteStore {
         Ok(Self { strips })
     }
 
-    /// The frame for `mood`/`variant` at `elapsed_ms`, looping at the
-    /// manifest's frame rate. Returns `(rgba, width, height)`.
-    pub fn frame(&self, mood: Mood, variant: &str, elapsed_ms: u64, fps: u32) -> Option<(&[u8], u32, u32)> {
-        let strip = self.strips.get(&(mood, match variant {
+    fn strip(&self, mood: Mood, variant: &str) -> Option<&Strip> {
+        self.strips.get(&(mood, match variant {
             "full" => "full",
             _ => "compact",
-        }))?;
-        if strip.frames.is_empty() {
-            return None;
-        }
-        let frame = if strip.frames.len() == 1 || fps == 0 {
-            0
-        } else {
-            ((elapsed_ms / 1000 * fps as u64 / 1) / 1 % strip.frames.len() as u64) as usize
-        };
-        // Integer frame selection at fps: elapsed * fps / 1000, looped.
-        let index = if strip.frames.len() == 1 || fps == 0 {
-            0
-        } else {
-            (elapsed_ms * fps as u64 / 1000) as usize % strip.frames.len()
-        };
-        let _ = frame;
-        Some((
-            strip.frames[index].as_slice(),
-            strip.width,
-            strip.height,
-        ))
+        }))
     }
 
-    /// Whether the mood has more than one frame (idle animations stop
-    /// on single-frame strips).
+    /// The frame for `mood`/`variant` at `elapsed_ms` of the animation
+    /// playback clock, honoring the authored cycle duration. One-shot
+    /// strips hold their final frame. Returns `(rgba, width, height)`.
+    pub fn frame(&self, mood: Mood, variant: &str, elapsed_ms: u64) -> Option<(&[u8], u32, u32)> {
+        let strip = self.strip(mood, variant)?;
+        let index = strip.frame_index(elapsed_ms);
+        Some((strip.frames[index].as_slice(), strip.width, strip.height))
+    }
+
+    /// Whether the mood has more than one frame in this variant.
     pub fn is_animated(&self, mood: Mood, variant: &str) -> bool {
-        self.strips
-            .get(&(mood, match variant {
-                "full" => "full",
-                _ => "compact",
-            }))
-            .is_some_and(|strip| strip.frames.len() > 1)
+        self.strip(mood, variant).is_some_and(|s| s.frames.len() > 1)
+    }
+
+    /// Milliseconds until the next frame change across the given
+    /// variants, for redraw scheduling. Returns `u64::MAX` when no
+    /// visible variant animates.
+    pub fn ms_to_next_frame(&self, mood: Mood, variants: &[&str], elapsed_ms: u64) -> u64 {
+        variants
+            .iter()
+            .filter_map(|v| self.strip(mood, v))
+            .filter(|s| s.frames.len() > 1)
+            .map(|s| s.ms_to_next_frame(elapsed_ms))
+            .min()
+            .unwrap_or(u64::MAX)
     }
 }
 
@@ -507,6 +603,7 @@ mod tests {
     #[test]
     fn media_channels_and_temporary_reactions_resolve() {
         let mut moods = MoodController::new();
+        moods.tick(0);
         moods.trigger(AppEvent::MediaPlay);
         assert_eq!(moods.mood(), Mood::Dance);
         moods.trigger(AppEvent::TaskCompleted);
@@ -520,6 +617,7 @@ mod tests {
     #[test]
     fn listening_outranks_music_and_focus() {
         let mut moods = MoodController::new();
+        moods.tick(0);
         moods.trigger(AppEvent::FocusStart);
         assert_eq!(moods.mood(), Mood::Focus);
         moods.trigger(AppEvent::MediaPlay);
@@ -533,6 +631,7 @@ mod tests {
     #[test]
     fn sleep_wins_and_wake_waves() {
         let mut moods = MoodController::new();
+        moods.tick(0);
         moods.trigger(AppEvent::MediaPlay);
         moods.trigger(AppEvent::Sleep);
         assert_eq!(moods.mood(), Mood::Sleep);
@@ -543,9 +642,110 @@ mod tests {
     }
 
     #[test]
+    fn error_outranks_wave_and_reminder() {
+        // Kit contract: error (90) > reminder (85) > wave/success (80).
+        let mut moods = MoodController::new();
+        moods.tick(0);
+        moods.trigger(AppEvent::Error);
+        assert_eq!(moods.mood(), Mood::Surprised);
+        moods.trigger(AppEvent::PointerWave);
+        assert_eq!(
+            moods.mood(),
+            Mood::Surprised,
+            "a later wave (80) cannot replace an error (90)"
+        );
+        moods.trigger(AppEvent::ReminderDue);
+        assert_eq!(
+            moods.mood(),
+            Mood::Surprised,
+            "a reminder (85) cannot replace an error (90)"
+        );
+
+        let mut reminder = MoodController::new();
+        reminder.tick(0);
+        reminder.trigger(AppEvent::ReminderDue);
+        assert_eq!(reminder.mood(), Mood::Alert);
+        reminder.trigger(AppEvent::TaskCompleted);
+        assert_eq!(
+            reminder.mood(),
+            Mood::Alert,
+            "a success reaction (80) cannot replace a reminder (85)"
+        );
+    }
+
+    #[test]
+    fn reaction_expires_correctly_after_long_uptime() {
+        // Regression: a host that resets the animation clock must not
+        // extend reaction deadlines (the controller clock never resets).
+        let mut moods = MoodController::new();
+        moods.tick(60_000);
+        moods.trigger(AppEvent::PointerWave);
+        assert_eq!(moods.mood(), Mood::Wave);
+        // Host resets its *playback* clock; controller keeps its own.
+        moods.tick(1_000);
+        assert_eq!(
+            moods.mood(),
+            Mood::Wave,
+            "controller clock is monotonic, not reset"
+        );
+        moods.tick(61_499);
+        assert_eq!(moods.mood(), Mood::Wave);
+        moods.tick(61_500);
+        assert_eq!(moods.mood(), Mood::Lazy, "wave expires at its deadline");
+    }
+
+    #[test]
+    fn frame_selection_honors_authored_duration() {
+        // lazy: 8 frames over 9000ms => 1125ms per frame.
+        let store = SpriteStore {
+            strips: HashMap::from([(
+                (Mood::Lazy, "compact"),
+                Strip {
+                    width: 28,
+                    height: 28,
+                    frames: vec![vec![0; 28 * 28 * 4]; 8],
+                    duration_ms: 9000,
+                    looping: true,
+                },
+            )]),
+        };
+        let (frame, _, _) = store.frame(Mood::Lazy, "compact", 0).unwrap();
+        assert_eq!(frame.len(), 28 * 28 * 4);
+        // At 1124ms still frame 0; at 1125ms frame 1; at 9000ms frame 0 (loop).
+        assert_eq!(index_for(&store, Mood::Lazy, "compact", 1124), 0);
+        assert_eq!(index_for(&store, Mood::Lazy, "compact", 1125), 1);
+        assert_eq!(index_for(&store, Mood::Lazy, "compact", 9000), 0);
+    }
+
+    fn index_for(store: &SpriteStore, mood: Mood, variant: &str, elapsed: u64) -> usize {
+        let strip = store.strip(mood, variant).unwrap();
+        strip.frame_index(elapsed)
+    }
+
+    #[test]
+    fn one_shot_strips_hold_final_frame() {
+        let store = SpriteStore {
+            strips: HashMap::from([(
+                (Mood::Surprised, "compact"),
+                Strip {
+                    width: 28,
+                    height: 28,
+                    frames: vec![vec![0; 28 * 28 * 4]; 4],
+                    duration_ms: 480,
+                    looping: false,
+                },
+            )]),
+        };
+        assert_eq!(index_for(&store, Mood::Surprised, "compact", 100), 0);
+        assert_eq!(index_for(&store, Mood::Surprised, "compact", 470), 3);
+        // After the one-shot completes, hold the last frame.
+        assert_eq!(index_for(&store, Mood::Surprised, "compact", 10_000), 3);
+    }
+
+    #[test]
     fn compositing_blends_and_replaces() {
         // 2x2 red dst, 1x1 half-transparent blue sprite scaled to 2x2.
-        let mut dst = vec![255u8, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255];
+        let mut dst = [255u8, 0, 0, 255].repeat(4);
         let sprite = vec![0u8, 0, 255, 128];
         composite(&mut dst, 2, (0, 0, 2, 2), &sprite, 1, 1);
         // All pixels: blend of red over blue at 50% -> (128,0,127,255)-ish.

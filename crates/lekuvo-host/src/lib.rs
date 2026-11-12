@@ -166,9 +166,10 @@ pub struct HostConfig {
     pub y: i16,
 }
 
-/// One live shared-memory segment used for frame presentation.
+/// One live shared-memory segment used for frame presentation. The
+/// segment is already marked destroyed (`IPC_RMID`) at attach time, so
+/// Drop only detaches the local mapping.
 struct ShmState {
-    shmid: i32,
     /// Mapped memory, `width * height * 4` bytes, main-thread only.
     addr: *mut u32,
     seg: u32,
@@ -182,9 +183,6 @@ impl Drop for ShmState {
     fn drop(&mut self) {
         unsafe {
             libc::shmdt(self.addr.cast_const().cast());
-            // IPC_RMID now that the X server has attached: the segment
-            // dies with the last detach instead of leaking.
-            libc::shmctl(self.shmid, libc::IPC_RMID, std::ptr::null_mut());
         }
     }
 }
@@ -199,6 +197,9 @@ pub struct NotchWindow {
     height: u16,
     atoms: Atoms,
     shm: Option<ShmState>,
+    /// The depth presentation requests must match (32 for ARGB, or the
+    /// screen's default depth in the non-alpha fallback).
+    depth: u8,
     /// Whether the visual carries per-pixel alpha (depth 32).
     pub has_alpha: bool,
 }
@@ -286,6 +287,7 @@ impl NotchWindow {
             width: config.width,
             height: config.height,
             atoms,
+            depth,
             has_alpha,
         };
         window.apply_wm_properties();
@@ -355,7 +357,9 @@ impl NotchWindow {
     }
 
     /// Best-effort SHM segment; presentation falls back to `PutImage`
-    /// over the socket when any step fails.
+    /// over the socket when any step fails. The segment is marked for
+    /// destruction (`IPC_RMID`) right after the server acknowledges
+    /// attachment, so no orphaned segment survives a crash or exit().
     fn attach_shm(&mut self) {
         let len = self.width as usize * self.height as usize * 4;
         let shmid = unsafe { libc::shmget(libc::IPC_PRIVATE, len, libc::IPC_CREAT | 0o600) };
@@ -369,34 +373,37 @@ impl NotchWindow {
             eprintln!("lekuvo: shmat failed; falling back to PutImage");
             return;
         }
+        let detach_and_remove = |addr: *mut libc::c_void, shmid: i32| unsafe {
+            libc::shmdt(addr.cast_const().cast());
+            libc::shmctl(shmid, libc::IPC_RMID, std::ptr::null_mut());
+        };
         let seg = match self.conn.generate_id() {
             Ok(seg) => seg,
-            Err(_) => {
-                unsafe {
-                    libc::shmdt(addr.cast_const().cast());
-                    libc::shmctl(shmid, libc::IPC_RMID, std::ptr::null_mut());
-                }
-                eprintln!("lekuvo: no X id for the shm segment; falling back to PutImage");
+            Err(error) => {
+                detach_and_remove(addr, shmid);
+                eprintln!("lekuvo: no X id for the shm segment ({error}); falling back to PutImage");
                 return;
             }
         };
-        let attached = self
-            .conn
-            .shm_attach(seg, shmid as u32, true)
-            .map(|cookie| cookie.check());
-        if let Err(error) = attached {
-            unsafe {
-                libc::shmdt(addr.cast_const().cast());
-                libc::shmctl(shmid, libc::IPC_RMID, std::ptr::null_mut());
-            }
+        // Both the request AND the server's acknowledgement must succeed:
+        // a rejection arrives as Ok(Err(_)) from check().
+        // Both the request AND the server's acknowledgement must succeed:
+        // a rejection arrives as Ok(Err(_)) from check().
+        let request = self.conn.shm_attach(seg, shmid as u32, true);
+        let acknowledged: Result<(), String> = match request {
+            Ok(cookie) => cookie.check().map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        if let Err(error) = acknowledged {
+            detach_and_remove(addr, shmid);
             eprintln!("lekuvo: XShm attach failed ({error}); falling back to PutImage");
             return;
         }
-        self.shm = Some(ShmState {
-            shmid,
-            addr: addr.cast(),
-            seg,
-        });
+        // The X server has attached: mark the segment destroyed now.
+        // Existing mappings (ours and the server's) stay usable until
+        // the last detach; nothing leaks if the process dies abruptly.
+        unsafe { libc::shmctl(shmid, libc::IPC_RMID, std::ptr::null_mut()) };
+        self.shm = Some(ShmState { addr: addr.cast(), seg });
     }
 
     fn root(&self) -> u32 {
@@ -415,7 +422,8 @@ impl NotchWindow {
 
     /// Presents one RGBA8 frame (tightly packed, `width * 4` stride).
     /// The alpha channel reaches the screen through the depth-32
-    /// visual; transparent pixels let the desktop show through.
+    /// visual; transparent pixels let the desktop show through. RGB is
+    /// premultiplied by alpha as X Render's compositing model requires.
     pub fn present(&mut self, frame: &[u8]) -> Result<(), HostError> {
         let expected = self.width as usize * self.height as usize * 4;
         if frame.len() != expected {
@@ -424,17 +432,15 @@ impl NotchWindow {
                 expected,
             });
         }
+        let depth = self.depth;
         if let Some(shm) = self.shm.as_mut() {
-            // RGBA8 bytes -> native-endian ARGB32 as the visual expects.
+            // Straight RGBA8 -> premultiplied native-endian ARGB32.
             for (dst, px) in
                 unsafe { std::slice::from_raw_parts_mut(shm.addr, expected / 4) }
                     .iter_mut()
                     .zip(frame.chunks_exact(4))
             {
-                *dst = (px[3] as u32) << 24
-                    | (px[0] as u32) << 16
-                    | (px[1] as u32) << 8
-                    | (px[2] as u32);
+                *dst = rgba_to_premultiplied_argb(px);
             }
             self.conn.shm_put_image(
                     self.wid,
@@ -447,7 +453,7 @@ impl NotchWindow {
                     self.height,
                     0,
                     0,
-                    32,
+                    depth,
                     x11rb::protocol::xproto::ImageFormat::Z_PIXMAP.into(),
                     false,
                     shm.seg,
@@ -457,10 +463,7 @@ impl NotchWindow {
         } else {
             let mut pixels = Vec::with_capacity(expected);
             for px in frame.chunks_exact(4) {
-                let argb: u32 = (px[3] as u32) << 24
-                    | (px[0] as u32) << 16
-                    | (px[1] as u32) << 8
-                    | (px[2] as u32);
+                let argb = rgba_to_premultiplied_argb(px);
                 pixels.extend_from_slice(&argb.to_ne_bytes());
             }
             self.conn.put_image(
@@ -472,7 +475,7 @@ impl NotchWindow {
                 0,
                 0,
                 0,
-                32,
+                depth,
                 &pixels,
             )?;
         }
@@ -674,3 +677,45 @@ fn translate(event: Event) -> Vec<HostEvent> {
 pub use x11rb::protocol::xproto::Rectangle;
 
 use x11rb::protocol::xproto::StackMode;
+
+
+/// Converts one straight-alpha RGBA8 pixel to a native-endian
+/// premultiplied ARGB32 word (X Render's compositing convention).
+/// A half-transparent red pixel (255,0,0,128) becomes 0x80800000, not
+/// 0x80ff0000.
+fn rgba_to_premultiplied_argb(px: &[u8]) -> u32 {
+    let a = px[3] as u32;
+    if a == 0 {
+        return 0;
+    }
+    let r = (px[0] as u32 * a + 127) / 255;
+    let g = (px[1] as u32 * a + 127) / 255;
+    let b = (px[2] as u32 * a + 127) / 255;
+    (a << 24) | (r << 16) | (g << 8) | b
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rgba_to_premultiplied_argb;
+
+    #[test]
+    fn transparent_pixel_is_zero() {
+        assert_eq!(rgba_to_premultiplied_argb(&[255, 0, 0, 0]), 0);
+        assert_eq!(rgba_to_premultiplied_argb(&[12, 34, 56, 0]), 0);
+    }
+
+    #[test]
+    fn opaque_pixel_keeps_channels() {
+        assert_eq!(rgba_to_premultiplied_argb(&[255, 0, 0, 255]), 0xff_ff_00_00);
+        assert_eq!(rgba_to_premultiplied_argb(&[1, 2, 3, 255]), 0xff_01_02_03);
+    }
+
+    #[test]
+    fn half_transparent_red_premultiplies() {
+        // (255,0,0,128): premultiplied red = 255*128/255 = 128.
+        let word = rgba_to_premultiplied_argb(&[255, 0, 0, 128]);
+        assert_eq!(word >> 24, 128);
+        assert_eq!((word >> 16) & 0xff, 128);
+        assert_eq!(word & 0xff_00, 0);
+    }
+}
