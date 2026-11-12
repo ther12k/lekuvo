@@ -1333,6 +1333,7 @@ dependencies = [
 [[package]]
 name = "velqu-reactive"
 version = "0.1.0"
+source = "git+https://github.com/ther12k/velqu-view.git?branch=host-write-api#f2a01d98c2667f3a6f6c207dcdaaf3118474ccb4"
 dependencies = [
  "rquickjs",
 ]
@@ -1340,6 +1341,7 @@ dependencies = [
 [[package]]
 name = "velqu-tailwind"
 version = "0.1.0"
+source = "git+https://github.com/ther12k/velqu-view.git?branch=host-write-api#f2a01d98c2667f3a6f6c207dcdaaf3118474ccb4"
 dependencies = [
  "cssparser",
 ]
@@ -1347,6 +1349,7 @@ dependencies = [
 [[package]]
 name = "velqu-view"
 version = "0.1.0"
+source = "git+https://github.com/ther12k/velqu-view.git?branch=host-write-api#f2a01d98c2667f3a6f6c207dcdaaf3118474ccb4"
 dependencies = [
  "cssparser",
  "fontdue",
