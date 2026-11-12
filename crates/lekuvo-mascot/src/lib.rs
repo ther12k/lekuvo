@@ -831,17 +831,20 @@ mod tests {
     #[test]
     fn frame_selection_honors_authored_duration() {
         // lazy: 8 frames over 9000ms => 1125ms per frame.
+        let strips = HashMap::from([(
+            (Mood::Lazy, "compact"),
+            Strip {
+                width: 28,
+                height: 28,
+                frames: vec![vec![0; 28 * 28 * 4]; 8],
+                duration_ms: 9000,
+                looping: true,
+            },
+        )]);
         let store = SpriteStore {
-            strips: HashMap::from([(
-                (Mood::Lazy, "compact"),
-                Strip {
-                    width: 28,
-                    height: 28,
-                    frames: vec![vec![0; 28 * 28 * 4]; 8],
-                    duration_ms: 9000,
-                    looping: true,
-                },
-            )]),
+            base: strips.clone(),
+            strips,
+            skin: Skin::Classic,
         };
         let (frame, _, _) = store.frame(Mood::Lazy, "compact", 0).unwrap();
         assert_eq!(frame.len(), 28 * 28 * 4);
@@ -858,17 +861,20 @@ mod tests {
 
     #[test]
     fn one_shot_strips_hold_final_frame() {
+        let strips = HashMap::from([(
+            (Mood::Surprised, "compact"),
+            Strip {
+                width: 28,
+                height: 28,
+                frames: vec![vec![0; 28 * 28 * 4]; 4],
+                duration_ms: 480,
+                looping: false,
+            },
+        )]);
         let store = SpriteStore {
-            strips: HashMap::from([(
-                (Mood::Surprised, "compact"),
-                Strip {
-                    width: 28,
-                    height: 28,
-                    frames: vec![vec![0; 28 * 28 * 4]; 4],
-                    duration_ms: 480,
-                    looping: false,
-                },
-            )]),
+            base: strips.clone(),
+            strips,
+            skin: Skin::Classic,
         };
         assert_eq!(index_for(&store, Mood::Surprised, "compact", 100), 0);
         assert_eq!(index_for(&store, Mood::Surprised, "compact", 470), 3);
