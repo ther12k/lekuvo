@@ -13,7 +13,7 @@ use zbus::zvariant::Value;
 
 /// One observed player state. `None`-valued snapshots never leave this
 /// crate: the channel carries `Option` where `None` means "no player".
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct MediaSnapshot {
     /// Whether `PlaybackStatus` is `Playing`.
     pub playing: bool,
@@ -21,6 +21,12 @@ pub struct MediaSnapshot {
     pub title: String,
     /// `xesam:artist`, joined with " / " when multiple artists exist.
     pub artist: String,
+    /// `Position` in microseconds at snapshot time.
+    pub pos_us: i64,
+    /// Track `Length` in microseconds (0 = unknown; no progress shown).
+    pub dur_us: i64,
+    /// `Rate` (playback speed; 1.0 = normal).
+    pub rate: f64,
 }
 
 /// Transport commands the app sends to the active player.
@@ -56,7 +62,19 @@ pub fn spawn() -> MediaHandle {
     }
 }
 
+/// Identity for change detection: everything EXCEPT the advancing
+/// position (position updates resend on the poll cadence while playing).
+fn identity(snapshot: &MediaSnapshot) -> (bool, String, String, i64, f64) {
+    (snapshot.playing, snapshot.title.clone(), snapshot.artist.clone(), snapshot.dur_us, snapshot.rate)
+}
+
 fn worker(updates: Sender<Option<MediaSnapshot>>, commands: Receiver<MediaCommand>) {
+    // Synthetic mode for demos and headless verification: no DBus, a
+    // track whose position advances once per second.
+    if std::env::var_os("LEKUVO_FAKE_MEDIA").is_some() {
+        fake_worker(updates);
+        return;
+    }
     let connection = match Connection::session() {
         Ok(connection) => connection,
         Err(error) => {
@@ -65,7 +83,7 @@ fn worker(updates: Sender<Option<MediaSnapshot>>, commands: Receiver<MediaComman
             return;
         }
     };
-    let mut last: Option<(String, MediaSnapshot)> = None;
+    let mut last: Option<(String, (bool, String, String, i64, f64))> = None;
     let mut current_player: Option<String> = None;
     let poll_interval = Duration::from_secs(2);
     let mut next_poll = std::time::Instant::now();
@@ -75,13 +93,17 @@ fn worker(updates: Sender<Option<MediaSnapshot>>, commands: Receiver<MediaComman
         if now >= next_poll {
             match poll_players(&connection) {
                 Some((name, snapshot)) => {
+                    let id = identity(&snapshot);
                     let changed = last
                         .as_ref()
-                        .is_none_or(|(last_name, last)| last_name != &name || last != &snapshot);
+                        .is_none_or(|(last_name, last_id)| last_name != &name || last_id != &id);
+                    // While playing, resend on every poll so the app can
+                    // re-stamp the interpolation base (drift correction).
+                    let resend = changed || snapshot.playing;
                     current_player = Some(name.clone());
-                    if changed {
+                    if resend {
                         let _ = updates.send(Some(snapshot.clone()));
-                        last = Some((name, snapshot));
+                        last = Some((name, id));
                     }
                 }
                 None => {
@@ -110,6 +132,29 @@ fn worker(updates: Sender<Option<MediaSnapshot>>, commands: Receiver<MediaComman
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 break;
             }
+        }
+    }
+}
+
+/// Demo/verification worker: an eternal "playing" track whose position
+/// advances once per second (no DBus involved).
+fn fake_worker(updates: Sender<Option<MediaSnapshot>>) {
+    let dur_us: i64 = 4 * 60 * 1_000_000;
+    let mut pos_us: i64 = 41_000_000;
+    loop {
+        let snapshot = MediaSnapshot {
+            playing: true,
+            title: "Midnight City".to_owned(),
+            artist: "M83".to_owned(),
+            pos_us,
+            dur_us,
+            rate: 1.0,
+        };
+        let _ = updates.send(Some(snapshot));
+        std::thread::sleep(Duration::from_secs(1));
+        pos_us = (pos_us + 1_000_000).min(dur_us);
+        if pos_us >= dur_us {
+            pos_us = 0;
         }
     }
 }
@@ -222,24 +267,54 @@ fn snapshot_of(connection: &Connection, name: &str) -> Option<MediaSnapshot> {
         .is_some_and(|status| status == "Playing");
     let mut title = String::new();
     let mut artist = String::new();
+    let mut dur_us: i64 = 0;
     if let Some(metadata) = all.get("Metadata") {
         if let Value::Dict(dict) = unwrap_value(&**metadata) {
             let (t, a) = parse_metadata_dict(dict);
             title = t;
             artist = a;
+            for (k, v) in dict.iter() {
+                if extract_str(k) == Some("mpris:length")
+                    && let Value::I64(len) = unwrap_value(v)
+                {
+                    dur_us = *len;
+                }
+            }
         }
     }
+    let pos_us = all
+        .get("Position")
+        .and_then(|value| match unwrap_value(&**value) {
+            Value::I64(pos) => Some(*pos),
+            _ => None,
+        })
+        .unwrap_or(0);
+    let rate = all
+        .get("Rate")
+        .and_then(|value| match unwrap_value(&**value) {
+            Value::F64(rate) => Some(*rate),
+            Value::I64(rate) => Some(*rate as f64),
+            _ => None,
+        })
+        .filter(|rate| *rate > 0.0)
+        .unwrap_or(1.0);
     if title.is_empty() {
         return Some(MediaSnapshot {
             playing,
             title: if playing { "Playing" } else { "Paused" }.to_owned(),
             artist: String::new(),
+            pos_us,
+            dur_us,
+            rate,
         });
     }
     Some(MediaSnapshot {
         playing,
         title,
         artist,
+        pos_us,
+        dur_us,
+        rate,
     })
 }
 

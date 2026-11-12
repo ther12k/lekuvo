@@ -32,6 +32,8 @@ const ABOVE_TICK: Duration = Duration::from_secs(2);
 const CLOCK_TICK: Duration = Duration::from_secs(1);
 /// Collapse the card after this idle time.
 const COLLAPSE_AFTER: Duration = Duration::from_secs(8);
+/// Collapse the card this long after the pointer leaves the overlay.
+const HOVER_COLLAPSE_AFTER: Duration = Duration::from_millis(1500);
 /// Tuck the pill after this idle time (unless media is playing).
 const TUCK_AFTER: Duration = Duration::from_secs(12);
 /// Drag threshold before a press becomes a window drag.
@@ -549,11 +551,15 @@ fn main() {
                     fact.fixture_id, fact.tag, fact.x, fact.y, fact.width, fact.height
                 );
             }
-            for (hx, hy) in [(210.0, 25.0), (230.0, 25.0), (280.0, 25.0), (330.0, 25.0), (345.0, 25.0), (355.0, 25.0)] {
-                let hit = view.hit_test(viewport, hx, hy)
-                    .and_then(|t| t.element_id)
-                    .unwrap_or_else(|| "-".into());
-                eprintln!("lekuvo: hit ({hx:.0},{hy:.0}) -> {hit}");
+            if let Some(pill) = facts.nodes.iter().find(|f| f.fixture_id == "pill") {
+                let gx = pill.x + pill.width - 14.0;
+                let hy = pill.y + pill.height / 2.0;
+                for dx in [-4.0, 0.0, 4.0] {
+                    let hit = view.hit_test(viewport, gx + dx, hy)
+                        .and_then(|t| t.element_id)
+                        .unwrap_or_else(|| "-".into());
+                    eprintln!("lekuvo: grip probe ({:.0},{:.0}) -> {hit}", gx + dx, hy);
+                }
             }
         }
     }
@@ -571,6 +577,13 @@ fn main() {
     let mut frame_buffer: Vec<u8> = Vec::new();
     let mut press_anchor: Option<(f32, f32, i16, i16)> = None; // (px, py, win_x, win_y)
     let mut dragging = false;
+    // Hover-expansion (reference behavior): the pill expands while the
+    // pointer is over it; leaving the overlay schedules a collapse.
+    // `pinned` (pill click) overrides the leave-collapse.
+    let mut pinned = false;
+    let mut hover_deadline: Option<Instant> = None;
+    let mut pill_rect: Option<Rectangle> = None;
+    let mut overlay_rects: Vec<Rectangle> = Vec::new();
     let mut last_activity = Instant::now();
     let mut last_above = Instant::now() - ABOVE_TICK;
     let mut last_clock = Instant::now() - CLOCK_TICK;
@@ -583,6 +596,14 @@ fn main() {
     // animation starts from its first frame.
     let mut mascot_playback = Instant::now();
     let mut media_playing = false;
+    // Playback position interpolation base: the snapshot's position and
+    // the instant it arrived; display position advances by rate * elapsed
+    // while playing and freezes otherwise.
+    let mut media_pos_us: i64 = 0;
+    let mut media_dur_us: i64 = 0;
+    let mut media_rate: f64 = 1.0;
+    let mut media_stamped = Instant::now();
+    let mut has_media_state = false;
     let mut running = true;
     let mut focus = FocusTimer::default();
     let mut toast_deadline: Option<Instant> = None;
@@ -650,6 +671,34 @@ fn main() {
                         let changed = view.pointer_move(viewport, x, y);
                         dirty |= changed;
                         wake(&mut view, &mut last_activity, now);
+                        // Hover-expand: entering the pill opens the card.
+                        let over_pill = pill_rect
+                            .is_some_and(|r| rect_contains(r, x, y, INPUT_PAD as f32 + 4.0));
+                        if over_pill {
+                            let tucked = view
+                                .reactive_state()
+                                .map(|st| st.get_path("tucked").truthy())
+                                .unwrap_or(false);
+                            let expanded = view
+                                .reactive_state()
+                                .map(|st| st.get_path("expanded").truthy())
+                                .unwrap_or(false);
+                            if !expanded && !tucked && !dragging {
+                                let _ = view.write_state("expanded", ReactiveValue::Bool(true));
+                                hover_deadline = None;
+                                dirty = true;
+                            }
+                        }
+                        // Leaving every overlay rect schedules a collapse;
+                        // entering any of them cancels it.
+                        let over_any = overlay_rects
+                            .iter()
+                            .any(|r| rect_contains(*r, x, y, INPUT_PAD as f32 + 4.0));
+                        if over_any {
+                            hover_deadline = None;
+                        } else if hover_deadline.is_none() {
+                            hover_deadline = Some(now + HOVER_COLLAPSE_AFTER);
+                        }
                     }
                 }
                 HostEvent::Enter { x, y } => {
@@ -660,6 +709,9 @@ fn main() {
                 HostEvent::Leave => {
                     if !dragging {
                         view.pointer_exit();
+                        if hover_deadline.is_none() {
+                            hover_deadline = Some(now + HOVER_COLLAPSE_AFTER);
+                        }
                         dirty = true;
                     }
                 }
@@ -736,15 +788,25 @@ fn main() {
                 Some(snapshot) => {
                     let title = truncate(&snapshot.title, 34);
                     let artist = truncate(&snapshot.artist, 40);
+                    media_pos_us = snapshot.pos_us;
+                    media_dur_us = snapshot.dur_us;
+                    media_rate = if snapshot.playing && snapshot.rate > 0.0 { snapshot.rate } else { 1.0 };
+                    media_stamped = now;
+                    let (pos, left, pct) = playback_display(media_pos_us, media_dur_us, snapshot.playing, media_rate, media_stamped, now);
                     let _ = view.write_state(
                         "media",
                         ReactiveValue::Object(vec![
                             ("playing".to_owned(), ReactiveValue::Bool(snapshot.playing)),
                             ("title".to_owned(), ReactiveValue::String(title)),
                             ("artist".to_owned(), ReactiveValue::String(artist)),
+                            ("pos".to_owned(), ReactiveValue::String(pos)),
+                            ("left".to_owned(), ReactiveValue::String(left)),
+                            ("pct".to_owned(), ReactiveValue::Number(pct)),
+                            ("dur".to_owned(), ReactiveValue::Number(media_dur_us as f64)),
                         ]),
                     );
                     let _ = view.write_state("hasMedia", ReactiveValue::Bool(true));
+                    has_media_state = true;
                     if snapshot.playing != media_playing {
                         media_playing = snapshot.playing;
                         moods.trigger(if media_playing {
@@ -758,15 +820,22 @@ fn main() {
                 None => {
                     // Full empty state: title/artist/playing must not keep
                     // stale values from the closed player.
+                    media_pos_us = 0;
+                    media_dur_us = 0;
                     let _ = view.write_state(
                         "media",
                         ReactiveValue::Object(vec![
                             ("playing".to_owned(), ReactiveValue::Bool(false)),
                             ("title".to_owned(), ReactiveValue::String("Nothing playing".to_owned())),
                             ("artist".to_owned(), ReactiveValue::String(String::new())),
+                            ("pos".to_owned(), ReactiveValue::String("0:00".to_owned())),
+                            ("left".to_owned(), ReactiveValue::String("-0:00".to_owned())),
+                            ("pct".to_owned(), ReactiveValue::Number(0.0)),
+                            ("dur".to_owned(), ReactiveValue::Number(0.0)),
                         ]),
                     );
                     let _ = view.write_state("hasMedia", ReactiveValue::Bool(false));
+                    has_media_state = false;
                     if media_playing {
                         media_playing = false;
                         moods.trigger(lekuvo_mascot::AppEvent::MediaPause);
@@ -800,6 +869,24 @@ fn main() {
                 moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
             }
             write_focus(&mut view, &focus);
+            // Advancing playback position (1 Hz re-stamp of the media
+            // interpolation base into the document).
+            if has_media_state {
+                let (pos, left, pct) = playback_display(
+                    media_pos_us,
+                    media_dur_us,
+                    media_playing,
+                    media_rate,
+                    media_stamped,
+                    now,
+                );
+                let _ = view.write_state("media.pos", ReactiveValue::String(pos));
+                let _ = view.write_state("media.left", ReactiveValue::String(left));
+                let _ = view.write_state("media.pct", ReactiveValue::Number(pct));
+                if live == "music" || media_playing {
+                    dirty = true;
+                }
+            }
             if debug_mode {
                 eprintln!(
                     "lekuvo: frames={} events={} tail={:?}",
@@ -859,7 +946,17 @@ fn main() {
             .map(|s| s.get_path("expanded").truthy())
             .unwrap_or(false);
         let tucked = state.map(|s| s.get_path("tucked").truthy()).unwrap_or(false);
-        if expanded && now.duration_since(last_activity) >= COLLAPSE_AFTER {
+        let pinned_now = pinned
+            || view
+                .reactive_state()
+                .map(|st| st.get_path("pinned").truthy())
+                .unwrap_or(false);
+        if hover_deadline.is_some_and(|deadline| now >= deadline) && !pinned_now {
+            hover_deadline = None;
+            let _ = view.write_state("expanded", ReactiveValue::Bool(false));
+            dirty = true;
+        }
+        if expanded && !pinned_now && now.duration_since(last_activity) >= COLLAPSE_AFTER {
             let _ = view.write_state("expanded", ReactiveValue::Bool(false));
             dirty = true;
         }
@@ -948,6 +1045,10 @@ fn main() {
                         dirty = true;
                     }
                     Some("pill") => {
+                        // Pin toggle: a pinned card ignores hover-leave
+                        // and the idle collapse until closed.
+                        pinned = !pinned;
+                        let _ = view.write_state("pinned", ReactiveValue::Bool(pinned));
                         moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
                     }
                     _ => {}
@@ -1068,6 +1169,23 @@ fn main() {
                 InputMode::Collapsed
             };
             let rects = input_rects(&mut view, viewport, mode);
+            // Cache the overlay geometry for hover decisions (cheap
+            // point-in-rect on Motion; no layout pass per mouse move).
+            if let Ok(facts) = view.layout_facts(viewport) {
+                let fact_rect = |fixture: &str| {
+                    facts.nodes.iter().find(|f| f.fixture_id == fixture).map(|f| Rectangle {
+                        x: f.x as i16,
+                        y: f.y as i16,
+                        width: f.width as u16,
+                        height: f.height as u16,
+                    })
+                };
+                pill_rect = fact_rect("pill");
+                overlay_rects = ["pill", "card", "toast"]
+                    .iter()
+                    .filter_map(|name| fact_rect(name))
+                    .collect();
+            }
             let key: Vec<(i16, i16, u16, u16)> = rects
                 .iter()
                 .map(|r| (r.x, r.y, r.width, r.height))
@@ -1165,6 +1283,49 @@ fn input_rects(view: &mut VelquView, viewport: Viewport, mode: InputMode) -> Vec
         // transparent), so the sensor strip is the pill's own rect.
         InputMode::Tucked => fact_rect("pill").into_iter().collect(),
     }
+}
+
+/// Whether the window-relative point sits inside `rect` grown by
+/// `pad` on every side.
+fn rect_contains(rect: Rectangle, x: f32, y: f32, pad: f32) -> bool {
+    let (rx, ry, rw, rh) = (
+        rect.x as f32,
+        rect.y as f32,
+        rect.width as f32,
+        rect.height as f32,
+    );
+    x >= rx - pad && x <= rx + rw + pad && y >= ry - pad && y <= ry + rh + pad
+}
+
+/// Formats microseconds as `m:ss`.
+fn fmt_us(us: i64) -> String {
+    let secs = (us / 1_000_000).max(0);
+    format!("{}:{:02}", secs / 60, secs % 60)
+}
+
+/// Current playback display triple: `(elapsed "m:ss", remaining "-m:ss",
+/// progress percent)`. While playing, the snapshot position advances by
+/// `rate * elapsed-since-stamp`, clamped to the duration.
+fn playback_display(
+    pos_us: i64,
+    dur_us: i64,
+    playing: bool,
+    rate: f64,
+    stamped: Instant,
+    now: Instant,
+) -> (String, String, f64) {
+    let mut pos = pos_us;
+    if playing && rate > 0.0 {
+        pos += (now.duration_since(stamped).as_secs_f64() * rate * 1_000_000.0) as i64;
+    }
+    if dur_us > 0 {
+        pos = pos.clamp(0, dur_us);
+    } else {
+        pos = pos.max(0);
+    }
+    let pct = if dur_us > 0 { (pos as f64 / dur_us as f64 * 100.0).min(100.0) } else { 0.0 };
+    let left = if dur_us > 0 { dur_us - pos } else { 0 };
+    (fmt_us(pos), format!("-{}", fmt_us(left)), pct)
 }
 
 fn truncate(text: &str, max_chars: usize) -> String {

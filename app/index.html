@@ -10,6 +10,7 @@
     vx-state="{
       expanded: false,
       tucked: false,
+      pinned: false,
       clock: '--:--',
       hasMedia: false,
       media: { playing: false, title: 'Nothing playing', artist: '' },
@@ -38,7 +39,7 @@
       :class="tucked
         ? 'lk-surface lk-pill flex items-center gap-2.5 h-12 pl-2 pr-3.5 text-slate-100 transition duration-500 opacity-0'
         : 'lk-surface lk-pill flex items-center gap-2.5 h-12 pl-2 pr-3.5 text-slate-100 transition duration-500 opacity-100'"
-      @click="expanded = !expanded"
+      @click="pinned = !pinned"
     >
       <div id="mascot-compact" data-vv-test="mascot-compact" class="w-11 h-11 shrink-0"></div>
       <span id="divider" data-vv-test="divider" class="w-px h-5 shrink-0" style="background-color:#FFFFFF1F"></span>
@@ -65,10 +66,19 @@
         <div id="focus-progress" class="lk-line h-1 rounded-full mt-1 overflow-hidden" vx-show="live === 'focus'">
           <div class="lk-warm h-full rounded-full" :style="'width:' + focus.pct + '%'"></div>
         </div>
+
+        <!-- Music progress under the label -->
+        <div
+          id="music-progress"
+          class="lk-line h-1 rounded-full mt-1 overflow-hidden"
+          vx-show="live === 'music' && hasMedia && media.dur > 0"
+        >
+          <div class="lk-accent-soft h-full rounded-full" :style="'width:' + media.pct + '%'"></div>
+        </div>
       </div>
 
       <span id="clock" data-vv-test="clock" vx-text="clock" class="lk-display lk-tabular text-sm font-semibold text-slate-400"></span>
-      <img src="icons/grip.png" alt="" class="shrink-0" style="width:14px;height:14px;opacity:0.55" />
+      <img id="grip" data-vv-test="grip" src="icons/grip.png" alt="" class="shrink-0" style="width:14px;height:14px;opacity:0.55" />
     </div>
 
     <!-- Toast tier -->
@@ -153,6 +163,15 @@
               vx-text="hasMedia ? (media.playing ? 'Playing now' : 'Paused') : 'No player'"
             ></span>
           </div>
+        </div>
+      </div>
+      <div vx-show="tab === 'music'" class="flex flex-col gap-2" style="width:100%">
+        <div class="lk-line w-full h-2 rounded-full overflow-hidden">
+          <div class="lk-accent h-full rounded-full" :style="'width:' + media.pct + '%'"></div>
+        </div>
+        <div class="flex items-center justify-between lk-tabular text-xs text-slate-400">
+          <span vx-text="media.pos"></span>
+          <span vx-text="media.left"></span>
         </div>
       </div>
       <div id="transport" data-vv-test="transport" vx-show="tab === 'music'" class="flex items-center justify-center gap-6">
@@ -294,7 +313,7 @@
           ></button>
         </div>
         <span class="font-bold">Lekuvo</span>
-        <button id="btn-close" class="lk-btn rounded-full w-7 h-7 flex items-center justify-center">
+        <button id="btn-close" class="lk-btn rounded-full w-7 h-7 flex items-center justify-center" @click="expanded = false; pinned = false">
           <img src="icons/close.png" alt="Close" style="width:12px;height:12px" />
         </button>
       </div>
