@@ -780,6 +780,10 @@ fn main() {
         if now.duration_since(last_clock) >= CLOCK_TICK {
             last_clock = now;
             let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
+            if debug_mode {
+                let anims = view.active_animations_debug();
+                eprintln!("lekuvo: active anims: {anims:?}");
+            }
             dirty = true;
             if let Some(phase) = focus.tick() {
                 let (title, sub) = match phase {
