@@ -615,6 +615,7 @@ fn main() {
     let mut hover_deadline: Option<Instant> = None;
     let mut pill_rect: Option<Rectangle> = None;
     let mut overlay_rects: Vec<Rectangle> = Vec::new();
+    let mut drift_seen_at: Option<Instant> = None;
     let mut last_activity = Instant::now();
     let mut last_above = Instant::now() - ABOVE_TICK;
     let mut last_clock = Instant::now() - CLOCK_TICK;
@@ -801,15 +802,24 @@ fn main() {
                 HostEvent::Expose => dirty = true,
                 HostEvent::Configure(geometry) => {
                     // Geometry drift guard: a hostile WM move is undone.
+                    // Debounced: Mutter echoes the PRE-move geometry right
+                    // after every move; restoring on that echo starts a
+                    // move -> echo -> restore fight. Only restore when the
+                    // mismatch persists past the debounce window.
                     if (geometry.x, geometry.y) != window_at && !dragging {
-                        if std::env::var_os("LEKUVO_DEBUG").is_some() {
-                            eprintln!(
-                                "lekuvo: drift guard restore {:?} -> {:?}",
-                                (geometry.x, geometry.y),
-                                window_at
-                            );
+                        if drift_seen_at.is_none_or(|seen| now.duration_since(seen) >= Duration::from_millis(300)) {
+                            drift_seen_at = Some(now);
+                            if std::env::var_os("LEKUVO_DEBUG").is_some() {
+                                eprintln!(
+                                    "lekuvo: drift guard restore {:?} -> {:?}",
+                                    (geometry.x, geometry.y),
+                                    window_at
+                                );
+                            }
+                            let _ = win.move_window(window_at.0, window_at.1);
                         }
-                        let _ = win.move_window(window_at.0, window_at.1);
+                    } else {
+                        drift_seen_at = None;
                     }
                     dirty = true;
                 }
