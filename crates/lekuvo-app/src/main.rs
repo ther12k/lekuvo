@@ -462,18 +462,32 @@ fn apply_theme(
     view: &mut VelquView,
     sprites: &mut Option<SpriteStore>,
     app_dir: &Path,
-    settings: &Settings,
-) {
-    let name = settings.theme.as_str();
-    let css = std::fs::read_to_string(app_dir.join(format!("theme-{name}.css")))
-        .unwrap_or_else(|_| format!("/* missing theme-{name}.css; classic values persist */"));
-    if let Err(error) = view.load_stylesheet(StylesheetSource::new("theme", css)) {
-        eprintln!("lekuvo: theme stylesheet: {error}");
+    name: &str,
+) -> Result<(), String> {
+    if !THEMES.contains(&name) {
+        return Err(format!("unknown theme {name:?}"));
     }
-    let _ = view.write_state("theme", ReactiveValue::String(name.to_owned()));
+    let path = app_dir.join(format!("theme-{name}.css"));
+    let css = std::fs::read_to_string(&path)
+        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    // Validate before changing the active sheet or picker. The renderer's
+    // stylesheet loader accepts nonempty but malformed CSS with diagnostics.
+    let mut probe = VelquView::new();
+    probe.load_stylesheet(StylesheetSource::new("theme", css.clone()))
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let diagnostics = probe.css_diagnostics();
+    if !diagnostics.is_empty() {
+        return Err(format!("{}: {}", path.display(), diagnostics.join("; ")));
+    }
+    view.write_state("theme", ReactiveValue::String(name.to_owned()))
+        .map_err(|error| format!("theme state: {error}"))?;
+    // Loading the same nonempty CSS has already succeeded in the probe.
+    view.load_stylesheet(StylesheetSource::new("theme", css))
+        .map_err(|error| format!("theme stylesheet: {error}"))?;
     if let Some(sprites) = sprites.as_mut() {
         sprites.set_skin(lekuvo_mascot::Skin::parse(name));
     }
+    Ok(())
 }
 
 fn main() {
@@ -565,8 +579,11 @@ fn main() {
 
     // Initial host-owned state: clock, zone alignment, media placeholder.
     let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
-    // PROBE: theme disabled
-    // apply_theme(&mut view, &mut sprites, &app_dir, &settings);
+    if let Err(error) = apply_theme(&mut view, &mut sprites, &app_dir, &settings.theme) {
+        eprintln!("lekuvo: cannot apply theme: {error}");
+        // Keep the saved preference on disk so restored resources can be retried.
+        settings.theme = "classic".to_owned();
+    }
     if std::env::var_os("LEKUVO_DEBUG").is_some() {
         let _ = view.render(viewport);
         if let Some(state) = view.reactive_state() {
@@ -1151,11 +1168,14 @@ fn main() {
                     Some(id) if id.starts_with("theme-") => {
                         let name = id.trim_start_matches("theme-");
                         if THEMES.contains(&name) && settings.theme != name {
-                            settings.theme = name.to_owned();
-                            // PROBE: theme disabled
-    // apply_theme(&mut view, &mut sprites, &app_dir, &settings);
-                            save_settings(&settings);
-                            dirty = true;
+                            match apply_theme(&mut view, &mut sprites, &app_dir, name) {
+                                Ok(()) => {
+                                    settings.theme = name.to_owned();
+                                    save_settings(&settings);
+                                    dirty = true;
+                                }
+                                Err(error) => eprintln!("lekuvo: cannot apply theme: {error}"),
+                            }
                         }
                     }
                     Some(id) if id.starts_with("todo-") => {
@@ -1489,5 +1509,45 @@ fn truncate(text: &str, max_chars: usize) -> String {
     }
     let cut: String = text.chars().take(max_chars.saturating_sub(1)).collect();
     format!("{cut}\u{2026}")
+}
+
+#[cfg(test)]
+mod theme_tests {
+    use super::*;
+
+    #[test]
+    fn bundled_themes_render_and_failed_switch_preserves_current_theme() {
+        let app_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app");
+        let mut view = VelquView::new();
+        view.enable_tailwind();
+        view.enable_reactive();
+        view.load_document(DocumentSource::new(
+            "lekuvo",
+            std::fs::read_to_string(app_dir.join("index.html")).unwrap(),
+        )).unwrap();
+        view.load_stylesheet(StylesheetSource::new(
+            "base",
+            std::fs::read_to_string(app_dir.join("01-notch.css")).unwrap(),
+        )).unwrap();
+        let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).unwrap();
+        view.render(viewport).unwrap();
+        view.pump_reactive(&[]);
+        let mut sprites = None;
+        let mut frames = Vec::new();
+        for name in THEMES {
+            apply_theme(&mut view, &mut sprites, &app_dir, name).unwrap();
+            assert_eq!(view.reactive_state().unwrap().get_path("theme"), ReactiveValue::String(name.to_owned()));
+            frames.push(view.render(viewport).unwrap().frame.pixels().to_vec());
+            assert_eq!(view.stylesheets().iter().filter(|sheet| sheet.id.as_str() == "theme").count(), 1);
+        }
+        assert!(frames.windows(2).all(|pair| pair[0] != pair[1]));
+        let sheet = view.stylesheets().last().unwrap().css.clone();
+        assert!(apply_theme(&mut view, &mut sprites, &app_dir.join("missing"), "meadow").is_err());
+        assert!(apply_theme(&mut view, &mut sprites, &app_dir, "../other").is_err());
+        assert_eq!(view.stylesheets().last().unwrap().css, sheet);
+        assert_eq!(view.reactive_state().unwrap().get_path("theme"), ReactiveValue::String("dusk".to_owned()));
+        apply_theme(&mut view, &mut sprites, &app_dir, "classic").unwrap();
+        assert_eq!(view.render(viewport).unwrap().frame.pixels(), frames[0]);
+    }
 }
 
