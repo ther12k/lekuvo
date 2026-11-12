@@ -17,13 +17,16 @@ use velqu_view::{
     VelquView, Viewport,
 };
 
+mod extras;
+mod noise;
+
 use lekuvo_host::{Geometry, HostConfig, HostEvent, NotchWindow, Rectangle};
 use lekuvo_mascot::{MoodController, SpriteStore, composite};
 
 /// Window size: the pill plus the fully expanded card, so expanding
 /// never resizes the window (presenting stays a fixed-size blit).
 const WIN_W: u16 = 560;
-const WIN_H: u16 = 372;
+const WIN_H: u16 = 430;
 /// Input rectangles grow by this much so edges are not hairline targets.
 const INPUT_PAD: i16 = 6;
 /// Keep-above re-assert cadence (the Layzee-proven value).
@@ -85,6 +88,16 @@ impl Default for Settings {
 
 /// Theme names in picker order.
 const THEMES: [&str; 4] = ["classic", "meadow", "sunset", "dusk"];
+
+/// The album-art slot file inside the user's cache dir.
+fn settings_art_cache() -> PathBuf {
+    let mut path = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".cache"));
+    path.push("lekuvo");
+    std::fs::create_dir_all(&path).ok();
+    path.join("art.png")
+}
 
 fn settings_path() -> PathBuf {
     let mut path = std::env::var_os("XDG_CONFIG_HOME")
@@ -150,9 +163,13 @@ fn save_settings(settings: &Settings) {
 // App assets
 // ---------------------------------------------------------------------------
 
-/// Sandboxed file resolver for the app directory (the velqu-lab pattern).
+/// Sandboxed file resolver for the app directory (the velqu-lab pattern),
+/// plus one host-managed slot: `art/current.png` serves the album-art
+/// file the app rewrites on every track change (paired with
+/// `VelquView::clear_images()` so the same `src` re-decodes).
 struct DirAssets {
     root: PathBuf,
+    art_path: PathBuf,
 }
 
 impl AssetResolver for DirAssets {
@@ -160,6 +177,13 @@ impl AssetResolver for DirAssets {
         let rel = request.path.trim_start_matches("./");
         if rel.starts_with('/') || rel.split(['/', '\\']).any(|segment| segment == "..") {
             return None;
+        }
+        if rel == "art/current.png" {
+            let bytes = std::fs::read(&self.art_path).ok()?;
+            return Some(Asset {
+                id: velqu_view::SourceId::new(rel),
+                bytes,
+            });
         }
         let bytes = std::fs::read(self.root.join(rel)).ok()?;
         Some(Asset {
@@ -460,7 +484,11 @@ fn main() {
     let mut view = VelquView::new();
     view.enable_tailwind();
     view.enable_reactive();
-    view.set_asset_resolver(Rc::new(DirAssets { root: app_dir.clone() }));
+    let art_path = settings_art_cache();
+    view.set_asset_resolver(Rc::new(DirAssets {
+        root: app_dir.clone(),
+        art_path: art_path.clone(),
+    }));
     let html = std::fs::read_to_string(app_dir.join("index.html"))
         .unwrap_or_else(|error| panic!("read {}: {error}", app_dir.join("index.html").display()));
     view.load_document(
@@ -510,6 +538,8 @@ fn main() {
 
     // --- Media + mascot ----------------------------------------------------
     let media = lekuvo_media::spawn();
+    let (art_tx, art_rx) = extras::spawn_art();
+    let (lyrics_tx, lyrics_rx) = extras::spawn_lyrics();
     let mut moods = MoodController::new();
     moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
 
@@ -577,6 +607,7 @@ fn main() {
     let mut frame_buffer: Vec<u8> = Vec::new();
     let mut press_anchor: Option<(f32, f32, i16, i16)> = None; // (px, py, win_x, win_y)
     let mut dragging = false;
+    let mut noise = noise::NoisePlayer::new();
     // Hover-expansion (reference behavior): the pill expands while the
     // pointer is over it; leaving the overlay schedules a collapse.
     // `pinned` (pill click) overrides the leave-collapse.
@@ -604,6 +635,10 @@ fn main() {
     let mut media_rate: f64 = 1.0;
     let mut media_stamped = Instant::now();
     let mut has_media_state = false;
+    // Album art + synced lyrics state (keyed by track).
+    let mut track_key = String::new();
+    let mut has_art = false;
+    let mut lyric_lines: Vec<(i64, String)> = Vec::new();
     let mut running = true;
     let mut focus = FocusTimer::default();
     let mut toast_deadline: Option<Instant> = None;
@@ -797,8 +832,8 @@ fn main() {
                         "media",
                         ReactiveValue::Object(vec![
                             ("playing".to_owned(), ReactiveValue::Bool(snapshot.playing)),
-                            ("title".to_owned(), ReactiveValue::String(title)),
-                            ("artist".to_owned(), ReactiveValue::String(artist)),
+                            ("title".to_owned(), ReactiveValue::String(title.clone())),
+                            ("artist".to_owned(), ReactiveValue::String(artist.clone())),
                             ("pos".to_owned(), ReactiveValue::String(pos)),
                             ("left".to_owned(), ReactiveValue::String(left)),
                             ("pct".to_owned(), ReactiveValue::Number(pct)),
@@ -807,6 +842,19 @@ fn main() {
                     );
                     let _ = view.write_state("hasMedia", ReactiveValue::Bool(true));
                     has_media_state = true;
+                    // New track (key changed): fetch its art and lyrics.
+                    let key = format!("{}|{}", title, artist);
+                    if key != track_key {
+                        track_key = key.clone();
+                        let _ = art_tx.send((key.clone(), snapshot.art_url.clone()));
+                        let _ = lyrics_tx.send((
+                            key.clone(),
+                            title.clone(),
+                            artist.clone(),
+                        ));
+                        lyric_lines = Vec::new();
+                        let _ = view.write_state("lyrics.has", ReactiveValue::Bool(false));
+                    }
                     if snapshot.playing != media_playing {
                         media_playing = snapshot.playing;
                         moods.trigger(if media_playing {
@@ -836,6 +884,12 @@ fn main() {
                     );
                     let _ = view.write_state("hasMedia", ReactiveValue::Bool(false));
                     has_media_state = false;
+                    has_art = false;
+                    track_key = String::new();
+                    lyric_lines = Vec::new();
+                    let _ = view.write_state("lyrics.has", ReactiveValue::Bool(false));
+                    let _ = view.write_state("hasArt", ReactiveValue::Bool(false));
+                    std::fs::remove_file(&art_path).ok();
                     if media_playing {
                         media_playing = false;
                         moods.trigger(lekuvo_mascot::AppEvent::MediaPause);
@@ -843,6 +897,34 @@ fn main() {
                     dirty = true;
                 }
             }
+        }
+
+        // Album-art results: write the slot file, invalidate decodes.
+        while let Ok((key, bytes)) = art_rx.try_recv() {
+            if key != track_key {
+                continue; // stale fetch for a previous track
+            }
+            if bytes.is_empty() {
+                has_art = false;
+                std::fs::remove_file(&art_path).ok();
+            } else {
+                std::fs::write(&art_path, &bytes).ok();
+                has_art = true;
+            }
+            view.clear_images();
+            let _ = view.write_state("hasArt", ReactiveValue::Bool(has_art));
+            dirty = true;
+        }
+
+        // Lyrics results: keep the lines for the window builder.
+        while let Ok((key, lyrics)) = lyrics_rx.try_recv() {
+            if key != track_key {
+                continue;
+            }
+            lyric_lines = lyrics.lines;
+            let has = !lyric_lines.is_empty();
+            let _ = view.write_state("lyrics.has", ReactiveValue::Bool(has));
+            dirty = true;
         }
 
         // Clock + focus tick.
@@ -883,8 +965,34 @@ fn main() {
                 let _ = view.write_state("media.pos", ReactiveValue::String(pos));
                 let _ = view.write_state("media.left", ReactiveValue::String(left));
                 let _ = view.write_state("media.pct", ReactiveValue::Number(pct));
-                if live == "music" || media_playing {
-                    dirty = true;
+                // Synced-lyrics window: five slots around the current line.
+                if !lyric_lines.is_empty() {
+                    let pos_now = pos_us_now(media_pos_us, media_dur_us, media_playing, media_rate, media_stamped, now);
+                    let current = lyric_lines
+                        .iter()
+                        .rposition(|(time, _)| *time <= pos_now)
+                        .map(|index| index as i64)
+                        .unwrap_or(-1);
+                    for slot in -2i64..=2i64 {
+                        let index = current + slot;
+                        let (text, is_cur) = match lyric_lines.get(index.max(0) as usize) {
+                            Some((_, text)) if index >= 0 && (index < lyric_lines.len() as i64) => {
+                                (text.clone(), slot == 0)
+                            }
+                            _ => (String::new(), false),
+                        };
+                        let _ = view.write_state(
+                            &format!("lyrics.l{}", slot + 2),
+                            ReactiveValue::String(text),
+                        );
+                        let _ = view.write_state(
+                            &format!("lyrics.c{}", slot + 2),
+                            ReactiveValue::Bool(is_cur),
+                        );
+                    }
+                    if live == "music" || media_playing {
+                        dirty = true;
+                    }
                 }
             }
             if debug_mode {
@@ -989,6 +1097,28 @@ fn main() {
                     }
                     Some("btn-prev") => {
                         let _ = media.commands.send(lekuvo_media::MediaCommand::Previous);
+                    }
+                    Some(id) if id.starts_with("noise-") => {
+                        let sound = id.trim_start_matches("noise-").to_owned();
+                        if noise::SOUNDS.contains(&sound.as_str()) {
+                            let playing = noise.toggle(&sound);
+                            let _ = view.write_state(
+                                &format!("noise.{sound}"),
+                                ReactiveValue::Bool(playing),
+                            );
+                            dirty = true;
+                        }
+                    }
+                    Some(id) if id.starts_with("seek-") => {
+                        // Click-to-seek: segment i targets (i+0.5)/10.
+                        if let Ok(segment) = id.trim_start_matches("seek-").parse::<usize>() {
+                            let fraction = (segment as f64 + 0.5) / 10.0;
+                            let _ = media.commands.send(lekuvo_media::MediaCommand::Seek(fraction));
+                            // Re-stamp from the new position immediately.
+                            media_stamped = now;
+                            media_pos_us =
+                                (media_dur_us as f64 * fraction) as i64;
+                        }
                     }
                     Some("btn-focus-toggle") => {
                         focus.running = !focus.running;
@@ -1140,13 +1270,15 @@ fn main() {
                             image::ColorType::Rgba8,
                         );
                     } else {
-                        let _ = image::save_buffer(
+                        if let Err(error) = image::save_buffer(
                             &path,
                             &frame_buffer,
                             WIN_W as u32,
                             WIN_H as u32,
                             image::ColorType::Rgba8,
-                        );
+                        ) {
+                            eprintln!("lekuvo: snapshot write failed: {error}");
+                        }
                     }
                 }
                 if win.present(&frame_buffer).is_err() {
@@ -1295,6 +1427,19 @@ fn rect_contains(rect: Rectangle, x: f32, y: f32, pad: f32) -> bool {
         rect.height as f32,
     );
     x >= rx - pad && x <= rx + rw + pad && y >= ry - pad && y <= ry + rh + pad
+}
+
+/// Raw playback position in microseconds (the interpolation core).
+fn pos_us_now(pos_us: i64, dur_us: i64, playing: bool, rate: f64, stamped: Instant, now: Instant) -> i64 {
+    let mut pos = pos_us;
+    if playing && rate > 0.0 {
+        pos += (now.duration_since(stamped).as_secs_f64() * rate * 1_000_000.0) as i64;
+    }
+    if dur_us > 0 {
+        pos.clamp(0, dur_us)
+    } else {
+        pos.max(0)
+    }
 }
 
 /// Formats microseconds as `m:ss`.

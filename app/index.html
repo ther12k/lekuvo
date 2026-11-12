@@ -18,6 +18,9 @@
       tab: 'music',
       live: 'idle',
       theme: 'classic',
+      hasArt: false,
+      lyrics: { has: false, l0: '', l1: '', l2: '', l3: '', l4: '', c0: false, c1: false, c2: false, c3: false, c4: false },
+      noise: { rain: false, waves: false, fire: false, wind: false },
       focus: { clock: '25:00', pct: 0, running: false, mode: 'focus', sessions: 0 },
       toast: { visible: false, title: '', sub: '' },
       todos: [
@@ -26,7 +29,7 @@
         { done: true, text: 'Ship the notch' }
       ]
     }"
-    style="width:560px;height:372px"
+    style="width:560px;height:430px"
     :class="zone === 'bl' || zone === 'bc' || zone === 'br'
       ? 'flex flex-col-reverse justify-end items-center'
       : 'flex flex-col justify-start items-center'"
@@ -99,8 +102,8 @@
     <div
       id="card"
       data-vv-test="card"
-      class="lk-surface lk-elevated mt-2 rounded-2xl text-slate-100 p-5 flex flex-col gap-4"
-      style="width:480px"
+      class="lk-surface lk-elevated mt-2 rounded-2xl text-slate-100 p-4 flex flex-col gap-3"
+      style="width:480px;height:370px"
       vx-show="expanded && !tucked"
     >
       <!-- Tab bar -->
@@ -122,6 +125,14 @@
           @click="tab = 'focus'"
         >Focus</button>
         <button
+          id="tab-noise"
+          class="flex-1 rounded-full px-3 py-2 text-xs font-bold transition"
+          :class="tab === 'noise'
+            ? 'lk-cool flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-900'
+            : 'flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-400'"
+          @click="tab = 'noise'"
+        >Noise</button>
+        <button
           id="tab-todo"
           class="flex-1 rounded-full px-3 py-2 text-xs font-bold transition"
           :class="tab === 'todo'
@@ -133,8 +144,12 @@
 
       <!-- Music panel -->
       <div id="musicrow" data-vv-test="musicrow" vx-show="tab === 'music'" class="flex items-center gap-4">
-        <!-- Vinyl record (themed accent disc) -->
+        <!-- Album art when the player provides it; themed vinyl otherwise -->
+        <div vx-show="hasArt" class="lk-inset shrink-0 overflow-hidden" :style="lyrics.has ? 'width:72px;height:72px;border-radius:12px' : 'width:96px;height:96px;border-radius:16px'">
+          <img src="art/current.png" alt="" :style="lyrics.has ? 'width:72px;height:72px' : 'width:96px;height:96px'" />
+        </div>
         <div
+          vx-show="!hasArt"
           class="lk-vinyl shrink-0"
           :class="media.playing
             ? 'lk-vinyl animate-spin shrink-0'
@@ -152,7 +167,7 @@
         <div class="flex flex-col gap-1.5 grow min-w-0">
           <p vx-text="media.title" class="lk-display lk-nowrap font-bold text-lg leading-tight"></p>
           <p vx-text="media.artist" class="lk-nowrap text-sm text-slate-400"></p>
-          <div class="flex items-center gap-2 mt-0.5">
+          <div class="flex items-center gap-2 mt-0.5" vx-show="!lyrics.has">
             <span vx-show="media.playing" class="shrink-0" style="display:flex;align-items:flex-end;gap:2px;height:12px">
               <span class="lk-eqbar animate-pulse" style="width:3px;height:12px;border-radius:999px;background-color:#8EA7F7"></span>
               <span class="lk-eqbar animate-pulse" style="width:3px;height:9px;border-radius:999px;background-color:#8EA7F7"></span>
@@ -165,13 +180,32 @@
           </div>
         </div>
       </div>
-      <div vx-show="tab === 'music'" class="flex flex-col gap-2" style="width:100%">
-        <div class="lk-line w-full h-2 rounded-full overflow-hidden">
-          <div class="lk-accent h-full rounded-full" :style="'width:' + media.pct + '%'"></div>
+      <!-- Synced lyrics: five slots around the current line -->
+      <div vx-show="tab === 'music' && lyrics.has" class="flex flex-col items-center gap-1 overflow-hidden" style="height:78px">
+        <p vx-show="lyrics.l0 !== ''" vx-text="lyrics.l0" :class="lyrics.c0 ? 'lk-nowrap text-xs text-slate-300' : 'lk-nowrap text-xs text-slate-500'"></p>
+        <p vx-show="lyrics.l1 !== ''" vx-text="lyrics.l1" :class="lyrics.c1 ? 'lk-nowrap text-xs text-slate-300' : 'lk-nowrap text-xs text-slate-400'"></p>
+        <p vx-show="lyrics.l2 !== ''" vx-text="lyrics.l2" :class="lyrics.c2 ? 'lk-nowrap text-sm font-bold lk-accent-soft' : 'lk-nowrap text-sm font-bold text-slate-200'"></p>
+        <p vx-show="lyrics.l3 !== ''" vx-text="lyrics.l3" :class="lyrics.c3 ? 'lk-nowrap text-xs text-slate-300' : 'lk-nowrap text-xs text-slate-400'"></p>
+        <p vx-show="lyrics.l4 !== ''" vx-text="lyrics.l4" :class="lyrics.c4 ? 'lk-nowrap text-xs text-slate-300' : 'lk-nowrap text-xs text-slate-500'"></p>
+      </div>
+
+      <!-- Click-to-seek: ten segments -->
+      <div vx-show="tab === 'music' && media.dur > 0" class="flex flex-col gap-2" style="width:100%">
+        <div class="flex gap-1" style="width:100%;height:12px">
+          <button id="seek-0" class="lk-line flex-1 rounded-l-full" :class="media.pct >= 10 ? 'lk-accent flex-1 rounded-l-full' : 'lk-line flex-1 rounded-l-full'"></button>
+          <button id="seek-1" class="lk-line flex-1" :class="media.pct >= 20 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
+          <button id="seek-2" class="lk-line flex-1" :class="media.pct >= 30 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
+          <button id="seek-3" class="lk-line flex-1" :class="media.pct >= 40 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
+          <button id="seek-4" class="lk-line flex-1" :class="media.pct >= 50 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
+          <button id="seek-5" class="lk-line flex-1" :class="media.pct >= 60 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
+          <button id="seek-6" class="lk-line flex-1" :class="media.pct >= 70 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
+          <button id="seek-7" class="lk-line flex-1" :class="media.pct >= 80 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
+          <button id="seek-8" class="lk-line flex-1" :class="media.pct >= 90 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
+          <button id="seek-9" class="lk-line flex-1 rounded-r-full" :class="media.pct >= 99 ? 'lk-accent flex-1 rounded-r-full' : 'lk-line flex-1 rounded-r-full'"></button>
         </div>
-        <div class="flex items-center justify-between lk-tabular text-xs text-slate-400">
+        <div class="flex items-center lk-tabular text-xs text-slate-400" style="width:100%">
           <span vx-text="media.pos"></span>
-          <span vx-text="media.left"></span>
+          <span vx-text="media.left" style="margin-left:auto"></span>
         </div>
       </div>
       <div id="transport" data-vv-test="transport" vx-show="tab === 'music'" class="flex items-center justify-center gap-6">
@@ -210,6 +244,26 @@
       </div>
 
       <!-- To-do panel -->
+      <!-- Noise panel -->
+      <div vx-show="tab === 'noise'" class="flex flex-col gap-2">
+        <button id="noise-rain" class="flex items-center justify-between rounded-xl px-4 py-3 transition" :class="noise.rain ? 'lk-accent flex items-center justify-between rounded-xl px-4 py-3 transition text-white font-bold' : 'lk-inset flex items-center justify-between rounded-xl px-4 py-3 transition text-slate-200 font-semibold'">
+          <span>Rain</span>
+          <span class="text-xs" vx-text="noise.rain ? 'On' : 'Off'"></span>
+        </button>
+        <button id="noise-waves" class="flex items-center justify-between rounded-xl px-4 py-3 transition" :class="noise.waves ? 'lk-accent flex items-center justify-between rounded-xl px-4 py-3 transition text-white font-bold' : 'lk-inset flex items-center justify-between rounded-xl px-4 py-3 transition text-slate-200 font-semibold'">
+          <span>Waves</span>
+          <span class="text-xs" vx-text="noise.waves ? 'On' : 'Off'"></span>
+        </button>
+        <button id="noise-fire" class="flex items-center justify-between rounded-xl px-4 py-3 transition" :class="noise.fire ? 'lk-accent flex items-center justify-between rounded-xl px-4 py-3 transition text-white font-bold' : 'lk-inset flex items-center justify-between rounded-xl px-4 py-3 transition text-slate-200 font-semibold'">
+          <span>Fire</span>
+          <span class="text-xs" vx-text="noise.fire ? 'On' : 'Off'"></span>
+        </button>
+        <button id="noise-wind" class="flex items-center justify-between rounded-xl px-4 py-3 transition" :class="noise.wind ? 'lk-accent flex items-center justify-between rounded-xl px-4 py-3 transition text-white font-bold' : 'lk-inset flex items-center justify-between rounded-xl px-4 py-3 transition text-slate-200 font-semibold'">
+          <span>Wind</span>
+          <span class="text-xs" vx-text="noise.wind ? 'On' : 'Off'"></span>
+        </button>
+      </div>
+
       <div id="todopanel" data-vv-test="todopanel" vx-show="tab === 'todo'" class="flex flex-col gap-2">
         <button
           id="todo-0"

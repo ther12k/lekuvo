@@ -27,10 +27,12 @@ pub struct MediaSnapshot {
     pub dur_us: i64,
     /// `Rate` (playback speed; 1.0 = normal).
     pub rate: f64,
+    /// `mpris:artUrl` (file:// or https://), empty when absent.
+    pub art_url: String,
 }
 
 /// Transport commands the app sends to the active player.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MediaCommand {
     /// Toggle play/pause.
     PlayPause,
@@ -38,6 +40,8 @@ pub enum MediaCommand {
     Next,
     /// Previous track.
     Previous,
+    /// Seek to `fraction` (0.0..1.0) of the current track's duration.
+    Seek(f64),
 }
 
 /// Handles to the media worker.
@@ -64,8 +68,15 @@ pub fn spawn() -> MediaHandle {
 
 /// Identity for change detection: everything EXCEPT the advancing
 /// position (position updates resend on the poll cadence while playing).
-fn identity(snapshot: &MediaSnapshot) -> (bool, String, String, i64, f64) {
-    (snapshot.playing, snapshot.title.clone(), snapshot.artist.clone(), snapshot.dur_us, snapshot.rate)
+fn identity(snapshot: &MediaSnapshot) -> (bool, String, String, i64, f64, String) {
+    (
+        snapshot.playing,
+        snapshot.title.clone(),
+        snapshot.artist.clone(),
+        snapshot.dur_us,
+        snapshot.rate,
+        snapshot.art_url.clone(),
+    )
 }
 
 fn worker(updates: Sender<Option<MediaSnapshot>>, commands: Receiver<MediaCommand>) {
@@ -83,7 +94,7 @@ fn worker(updates: Sender<Option<MediaSnapshot>>, commands: Receiver<MediaComman
             return;
         }
     };
-    let mut last: Option<(String, (bool, String, String, i64, f64))> = None;
+    let mut last: Option<(String, (bool, String, String, i64, f64, String))> = None;
     let mut current_player: Option<String> = None;
     let poll_interval = Duration::from_secs(2);
     let mut next_poll = std::time::Instant::now();
@@ -149,6 +160,7 @@ fn fake_worker(updates: Sender<Option<MediaSnapshot>>) {
             pos_us,
             dur_us,
             rate: 1.0,
+            art_url: String::new(),
         };
         let _ = updates.send(Some(snapshot));
         std::thread::sleep(Duration::from_secs(1));
@@ -268,16 +280,25 @@ fn snapshot_of(connection: &Connection, name: &str) -> Option<MediaSnapshot> {
     let mut title = String::new();
     let mut artist = String::new();
     let mut dur_us: i64 = 0;
+    let mut art_url = String::new();
     if let Some(metadata) = all.get("Metadata") {
         if let Value::Dict(dict) = unwrap_value(&**metadata) {
             let (t, a) = parse_metadata_dict(dict);
             title = t;
             artist = a;
             for (k, v) in dict.iter() {
-                if extract_str(k) == Some("mpris:length")
-                    && let Value::I64(len) = unwrap_value(v)
-                {
-                    dur_us = *len;
+                match extract_str(k) {
+                    Some("mpris:length") => {
+                        if let Value::I64(len) = unwrap_value(v) {
+                            dur_us = *len;
+                        }
+                    }
+                    Some("mpris:artUrl") => {
+                        if let Some(url) = extract_str(v) {
+                            art_url = url.to_owned();
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
@@ -306,6 +327,7 @@ fn snapshot_of(connection: &Connection, name: &str) -> Option<MediaSnapshot> {
             pos_us,
             dur_us,
             rate,
+            art_url,
         });
     }
     Some(MediaSnapshot {
@@ -315,6 +337,7 @@ fn snapshot_of(connection: &Connection, name: &str) -> Option<MediaSnapshot> {
         pos_us,
         dur_us,
         rate,
+        art_url,
     })
 }
 
@@ -327,14 +350,74 @@ fn apply_command(connection: &Connection, name: &str, command: MediaCommand) {
     ) else {
         return;
     };
-    let method = match command {
-        MediaCommand::PlayPause => "PlayPause",
-        MediaCommand::Next => "Next",
-        MediaCommand::Previous => "Previous",
-    };
-    if let Err(error) = player.call::<_, _, ()>(method, &()) {
-        eprintln!("lekuvo-media: {method} on {name} failed: {error}");
+    match command {
+        MediaCommand::PlayPause => {
+            if let Err(error) = player.call::<_, _, ()>("PlayPause", &()) {
+                eprintln!("lekuvo-media: PlayPause on {name} failed: {error}");
+            }
+        }
+        MediaCommand::Next => {
+            if let Err(error) = player.call::<_, _, ()>("Next", &()) {
+                eprintln!("lekuvo-media: Next on {name} failed: {error}");
+            }
+        }
+        MediaCommand::Previous => {
+            if let Err(error) = player.call::<_, _, ()>("Previous", &()) {
+                eprintln!("lekuvo-media: Previous on {name} failed: {error}");
+            }
+        }
+        MediaCommand::Seek(fraction) => {
+            // SetPosition(trackid, position_us) — args as a tuple.
+            let position = (fraction.clamp(0.0, 1.0) * current_duration(&connection, name) as f64) as i64;
+            let trackid = current_trackid(&connection, name);
+            if let Err(error) = player.call::<_, _, ()>("SetPosition", &(&trackid, &position)) {
+                eprintln!("lekuvo-media: SetPosition on {name} failed: {error}");
+            }
+        }
     }
+}
+
+use zbus::zvariant::ObjectPath;
+
+/// The current track duration in microseconds (0 when unknown).
+fn current_duration(connection: &Connection, name: &str) -> i64 {
+    snapshot_of(connection, name).map(|s| s.dur_us).unwrap_or(0)
+}
+
+/// The current track id (`mpris:trackid`), defaulting to `/org/mpris/MediaPlayer2/TrackList/NoTrack`.
+fn current_trackid(connection: &Connection, name: &str) -> zbus::zvariant::ObjectPath<'static> {
+    let fallback =
+        ObjectPath::try_from("/org/mpris/MediaPlayer2/TrackList/NoTrack").expect("valid path");
+    let properties = match zbus::blocking::fdo::PropertiesProxy::new(
+        connection,
+        name,
+        "/org/mpris/MediaPlayer2",
+    ) {
+        Ok(properties) => properties,
+        Err(_) => return fallback,
+    };
+    let interface =
+        zbus::names::InterfaceName::from_static_str("org.mpris.MediaPlayer2.Player")
+            .expect("valid interface");
+    let Ok(all) = properties.get_all(interface) else {
+        return fallback;
+    };
+    let Some(metadata) = all.get("Metadata") else {
+        return fallback;
+    };
+    let Value::Dict(dict) = unwrap_value(&**metadata) else {
+        return fallback;
+    };
+    for (k, v) in dict.iter() {
+        if extract_str(k) == Some("mpris:trackid") {
+            if let Some(path) = extract_str(v) {
+                if let Ok(path) = ObjectPath::try_from(path.to_owned()) {
+                    return path;
+                }
+            }
+        }
+    }
+    fallback
 }
 
 #[cfg(test)]
