@@ -39,6 +39,17 @@ html, body {
 
 #pill:hover { background-color: #1E293B; }
 
+/* Sound tiles use flex rather than grid, which the native renderer does not need. */
+.lk-sound {
+  height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
 /* Selected theme swatch ring. */
 .lk-sel { border-color: rgba(255, 255, 255, 0.92); }
 

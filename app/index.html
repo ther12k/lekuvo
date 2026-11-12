@@ -166,7 +166,7 @@
         </div>
         <div class="flex flex-col gap-1.5 grow min-w-0">
           <p vx-text="media.title" class="lk-display lk-nowrap font-bold text-lg leading-tight"></p>
-          <p vx-text="media.artist" class="lk-nowrap text-sm text-slate-400"></p>
+          <p vx-text="hasMedia ? media.artist : 'Open a music player to get started'" class="lk-nowrap text-sm text-slate-400"></p>
           <div class="flex items-center gap-2 mt-0.5" vx-show="!lyrics.has">
             <span vx-show="media.playing" class="shrink-0" style="display:flex;align-items:flex-end;gap:2px;height:12px">
               <span class="lk-eqbar animate-pulse" style="width:3px;height:12px;border-radius:999px;background-color:#8EA7F7"></span>
@@ -243,27 +243,32 @@
         </p>
       </div>
 
-      <!-- To-do panel -->
-      <!-- Noise panel -->
+      <!-- Noise panel: independent tiles, as in Layzee's sound mixer. -->
       <div vx-show="tab === 'noise'" class="flex flex-col gap-2">
-        <button id="noise-rain" class="flex items-center justify-between rounded-xl px-4 py-3 transition" :class="noise.rain ? 'lk-accent flex items-center justify-between rounded-xl px-4 py-3 transition text-white font-bold' : 'lk-inset flex items-center justify-between rounded-xl px-4 py-3 transition text-slate-200 font-semibold'">
-          <span>Rain</span>
-          <span class="text-xs" vx-text="noise.rain ? 'On' : 'Off'"></span>
-        </button>
-        <button id="noise-waves" class="flex items-center justify-between rounded-xl px-4 py-3 transition" :class="noise.waves ? 'lk-accent flex items-center justify-between rounded-xl px-4 py-3 transition text-white font-bold' : 'lk-inset flex items-center justify-between rounded-xl px-4 py-3 transition text-slate-200 font-semibold'">
-          <span>Waves</span>
-          <span class="text-xs" vx-text="noise.waves ? 'On' : 'Off'"></span>
-        </button>
-        <button id="noise-fire" class="flex items-center justify-between rounded-xl px-4 py-3 transition" :class="noise.fire ? 'lk-accent flex items-center justify-between rounded-xl px-4 py-3 transition text-white font-bold' : 'lk-inset flex items-center justify-between rounded-xl px-4 py-3 transition text-slate-200 font-semibold'">
-          <span>Fire</span>
-          <span class="text-xs" vx-text="noise.fire ? 'On' : 'Off'"></span>
-        </button>
-        <button id="noise-wind" class="flex items-center justify-between rounded-xl px-4 py-3 transition" :class="noise.wind ? 'lk-accent flex items-center justify-between rounded-xl px-4 py-3 transition text-white font-bold' : 'lk-inset flex items-center justify-between rounded-xl px-4 py-3 transition text-slate-200 font-semibold'">
-          <span>Wind</span>
-          <span class="text-xs" vx-text="noise.wind ? 'On' : 'Off'"></span>
-        </button>
+        <p class="text-xs text-slate-400">Mix sounds for your space</p>
+        <div class="flex gap-2">
+          <button id="noise-rain" class="lk-sound flex-1 rounded-xl" :class="noise.rain ? 'lk-sound lk-accent flex-1 rounded-xl text-white' : 'lk-sound lk-inset flex-1 rounded-xl text-slate-200'">
+            <span class="text-sm font-bold">Rain</span>
+            <span class="text-xs" vx-text="noise.rain ? 'On' : 'Off'"></span>
+          </button>
+          <button id="noise-waves" class="lk-sound flex-1 rounded-xl" :class="noise.waves ? 'lk-sound lk-accent flex-1 rounded-xl text-white' : 'lk-sound lk-inset flex-1 rounded-xl text-slate-200'">
+            <span class="text-sm font-bold">Waves</span>
+            <span class="text-xs" vx-text="noise.waves ? 'On' : 'Off'"></span>
+          </button>
+        </div>
+        <div class="flex gap-2">
+          <button id="noise-fire" class="lk-sound flex-1 rounded-xl" :class="noise.fire ? 'lk-sound lk-accent flex-1 rounded-xl text-white' : 'lk-sound lk-inset flex-1 rounded-xl text-slate-200'">
+            <span class="text-sm font-bold">Fire</span>
+            <span class="text-xs" vx-text="noise.fire ? 'On' : 'Off'"></span>
+          </button>
+          <button id="noise-wind" class="lk-sound flex-1 rounded-xl" :class="noise.wind ? 'lk-sound lk-accent flex-1 rounded-xl text-white' : 'lk-sound lk-inset flex-1 rounded-xl text-slate-200'">
+            <span class="text-sm font-bold">Wind</span>
+            <span class="text-xs" vx-text="noise.wind ? 'On' : 'Off'"></span>
+          </button>
+        </div>
       </div>
 
+      <!-- To-do panel -->
       <div id="todopanel" data-vv-test="todopanel" vx-show="tab === 'todo'" class="flex flex-col gap-2">
         <button
           id="todo-0"
