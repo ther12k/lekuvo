@@ -81,7 +81,10 @@ export default function SystemPanel() {
   const [err, setErr] = useState<string | null>(null);
   const [brightDrag, setBrightDrag] = useState<number | null>(null);
 
-  const refreshNet = () => invoke<NetStatus>("net_status").then(setNet).catch(console.error);
+  const refreshNet = () =>
+    invoke<NetStatus>("net_status")
+      .then(n => setNet(prev => (prev && JSON.stringify(prev) === JSON.stringify(n) ? prev : n)))
+      .catch(console.error);
 
   useEffect(() => {
     refreshNet();

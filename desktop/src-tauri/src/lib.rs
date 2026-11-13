@@ -29,6 +29,7 @@ struct Workarea {
     x: i32,
     y: i32,
     w: i32,
+    #[allow(dead_code)] // kept for completeness of the _NET_WORKAREA quadruple
     h: i32,
 }
 
@@ -74,77 +75,11 @@ fn read_workarea() -> Option<Workarea> {
     })
 }
 
-/// Nearest monitor to a point, as (x0, y0, x1, y1).
-fn nearest_monitor(app: &AppHandle, cx: i32, cy: i32) -> Option<(i32, i32, i32, i32)> {
-    let mons = app.available_monitors().ok()?;
-    mons.iter()
-        .map(|m| {
-            let p = m.position();
-            let s = m.size();
-            (p.x, p.y, p.x + s.width as i32, p.y + s.height as i32)
-        })
-        .min_by_key(|(x0, y0, x1, y1)| {
-            let dx = (cx - (x0 + x1) / 2).abs();
-            let dy = (cy - (y0 + y1) / 2).abs();
-            dx + dy
-        })
-}
-
-/// Bounding box covering every monitor (the desktop union).
-fn monitor_union(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
-    let mons = app.available_monitors().ok()?;
-    let mut rects = mons.iter().map(|m| {
-        let p = m.position();
-        let s = m.size();
-        (p.x, p.y, p.x + s.width as i32, p.y + s.height as i32)
-    });
-    let first = rects.next()?;
-    Some(rects.fold(first, |a, b| {
-        (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))
-    }))
-}
-
-/// Orientation of the notch for a free window position: the nearest
-/// screen-edge zone (t/tl/tr/l/r/bl/b/br) when it hugs an edge of its
-/// monitor, or "free" when it floats mid-screen.
-fn derive_zone(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> String {
-    let Some((mx0, my0, mx1, my1)) = nearest_monitor(app, x + w / 2, y + h / 2) else {
-        return "t".into();
-    };
-    let near = 60;
-    let d_top = (y - my0).abs();
-    let d_bottom = ((my1) - (y + h)).abs();
-    let d_left = (x - mx0).abs();
-    let d_right = ((mx1) - (x + w)).abs();
-    let mut zone = String::from("free");
-    if d_top < near {
-        zone = "t".into();
-    } else if d_bottom < near {
-        zone = "b".into();
-    }
-    if d_left < near {
-        zone = match zone.as_str() {
-            "t" => "tl".into(),
-            "b" => "bl".into(),
-            _ => "l".into(),
-        };
-    } else if d_right < near {
-        zone = match zone.as_str() {
-            "t" => "tr".into(),
-            "b" => "br".into(),
-            _ => "r".into(),
-        };
-    }
-    zone
-}
-
 /// Free placement: the window stays wherever it was dropped (exact x,y is
 /// persisted). Only a guard keeps it from being lost entirely off-screen.
 
 #[derive(Default)]
 struct DragWatch(Mutex<Option<std::time::Instant>>);
-#[derive(Default)]
-struct ZoneState(Mutex<String>);
 
 fn pos_file() -> std::path::PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
@@ -169,14 +104,10 @@ fn load_position() -> Option<(i32, i32)> {
     Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
 }
 
-#[tauri::command]
-fn current_zone(state: State<'_, ZoneState>) -> String {
-    state.0.lock().unwrap().clone()
-}
-
 /// After a drag ends (window stops moving for ~280ms): keep the window
 /// exactly where it was dropped, clamp only against falling fully
-/// off-desktop, persist the position, and report the derived orientation.
+/// off-desktop, and persist the position. No zone snapping, no orientation
+/// thresholds — the notch renders centered in the window, wherever it is.
 fn spawn_placement_watcher(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(80));
@@ -195,24 +126,10 @@ fn spawn_placement_watcher(app: AppHandle) {
             continue;
         }
         let Some(win) = app.get_webview_window("main") else { continue };
-        let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else { continue };
-        let (w, h) = (size.width as i32, size.height as i32);
-        // guard: at least a grab strip of the window stays on the desktop
-        let mut x = pos.x;
-        let mut y = pos.y;
-        if let Some((ux0, uy0, ux1, uy1)) = monitor_union(&app) {
-            let nx = x.clamp(ux0 - w + 220, (ux1 - 220).max(ux0 - w + 220));
-            let ny = y.clamp(uy0, uy1.saturating_sub(160));
-            if (nx, ny) != (x, y) {
-                let _ = win.set_position(tauri::PhysicalPosition::new(nx, ny));
-                x = nx;
-                y = ny;
-            }
-        }
-        save_position(x, y);
-        let zone = derive_zone(&app, x, y, w, h);
-        *app.state::<ZoneState>().0.lock().unwrap() = zone.clone();
-        let _ = app.emit("zone-changed", zone);
+        let (Ok(pos), _size) = (win.outer_position(), win.outer_size()) else { continue };
+        // fully unrestricted: the window stays exactly where it was
+        // dropped, off-screen edges included
+        save_position(pos.x, pos.y);
     });
 }
 
@@ -776,7 +693,6 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(OverlayState::default())
         .manage(DragWatch::default())
-        .manage(ZoneState::default())
         .invoke_handler(tauri::generate_handler![
             set_hit_rect,
             media_state,
@@ -785,7 +701,6 @@ pub fn run() {
             mixer_set,
             sys_status,
             sys_set,
-            current_zone,
             net_status,
             wifi_radio,
             wifi_connect,
@@ -820,17 +735,7 @@ pub fn run() {
                         }
                     }
                 }
-                // record orientation for the frontend + watch future drags
-                if let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) {
-                    let zone = derive_zone(
-                        app.handle(),
-                        pos.x,
-                        pos.y,
-                        size.width as i32,
-                        size.height as i32,
-                    );
-                    *app.state::<ZoneState>().0.lock().unwrap() = zone;
-                }
+                // watch future drags so the placement watcher can settle them
                 let app2 = app.handle().clone();
                 window.on_window_event(move |ev| {
                     if let tauri::WindowEvent::Moved(_) = ev {

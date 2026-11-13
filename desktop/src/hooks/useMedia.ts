@@ -46,11 +46,14 @@ export function useMedia() {
     };
   }, []);
 
+  // local 1s tick advances the position display — only while actually
+  // playing, so an idle overlay re-renders nothing
   const [, forceTick] = useState(0);
   useEffect(() => {
+    if (!info?.playing) return;
     const id = window.setInterval(() => forceTick(n => n + 1), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [info?.playing]);
 
   const positionSec = info
     ? Math.min(
@@ -79,7 +82,14 @@ export function useMixerApps() {
   useEffect(() => {
     let alive = true;
     const poll = () =>
-      invoke<MixerApp[]>("mixer_state").then(a => alive && setApps(a)).catch(() => alive && setApps([]));
+      invoke<MixerApp[]>("mixer_state")
+        .then(a => {
+          if (!alive) return;
+          setApps(prev => (JSON.stringify(prev) === JSON.stringify(a) ? prev : a));
+        })
+        .catch(() => {
+          if (alive) setApps(prev => (prev.length === 0 ? prev : []));
+        });
     poll();
     const id = window.setInterval(poll, 1500);
     return () => {

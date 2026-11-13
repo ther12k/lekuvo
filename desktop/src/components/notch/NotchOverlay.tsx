@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { useMedia, useMixerApps } from "../../hooks/useMedia";
 import { useSysStatus } from "../../hooks/useSysStatus";
 import { AnimatePresence, motion } from "framer-motion";
@@ -54,13 +53,9 @@ export default function NotchOverlay() {
   const [size, setSize] = useState({ w: 760, h: 520 });
 
   // chrome / layout
-  // live orientation: the Rust side derives it from the dropped position
-  const [pos, setPos] = useState<PosId>("t");
-  useEffect(() => {
-    const un = listen<PosId>("zone-changed", e => setPos(e.payload));
-    void invoke<string>("current_zone").then(z => setPos(z as PosId)).catch(console.error);
-    return () => { un.then(f => f()); };
-  }, []);
+  // free placement: the notch is always centered in the window; the
+  // window itself goes anywhere on any display
+  const pos: PosId = "free";
       const [hover, setHover] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [hinted, setHinted] = useState(false);

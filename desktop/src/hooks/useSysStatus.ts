@@ -18,7 +18,14 @@ export function useSysStatus() {
   const [st, setSt] = useState<SysStatus | null>(null);
   useEffect(() => {
     let alive = true;
-    const poll = () => invoke<SysStatus>("sys_status").then(s => alive && setSt(s)).catch(() => {});
+    const poll = () =>
+      invoke<SysStatus>("sys_status")
+        .then(s => {
+          if (!alive || !s) return;
+          // skip re-render when nothing actually changed
+          setSt(prev => (prev && JSON.stringify(prev) === JSON.stringify(s) ? prev : s));
+        })
+        .catch(() => {});
     poll();
     const id = window.setInterval(poll, 2000);
     return () => {
