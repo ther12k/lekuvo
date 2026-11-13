@@ -21,14 +21,131 @@ fn set_hit_rect(x: f64, y: f64, w: f64, h: f64, state: State<OverlayState>) {
     *state.0.lock().unwrap() = HitRect { x, y, w, h };
 }
 
-/// Places the overlay window flush to the top edge, centered horizontally
-/// on whatever monitor it currently occupies.
-fn pin_to_top_center(window: &tauri::WebviewWindow) {
-    let Ok(Some(monitor)) = window.current_monitor() else { return };
-    let screen = monitor.size();
-    let win = window.outer_size().unwrap_or_default();
-    let x = screen.width.saturating_sub(win.width) / 2;
-    let _ = window.set_position(tauri::PhysicalPosition::new(x, 0));
+/* ───────────────────────── placement ───────────────────────── */
+
+/// Usable screen area (excludes the GNOME shell bar) in physical px.
+#[derive(Clone, Copy, Debug)]
+struct Workarea {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+}
+
+fn read_workarea() -> Option<Workarea> {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::{AtomEnum, ConnectionExt};
+
+    let (conn, screen_num) = x11rb::rust_connection::RustConnection::connect(None).ok()?;
+    let screen = &conn.setup().roots[screen_num];
+    let root = screen.root;
+    let atom = |name: &str| -> Option<u32> {
+        Some(
+            conn.intern_atom(false, name.as_bytes())
+                .ok()?
+                .reply()
+                .ok()?
+                .atom,
+        )
+    };
+    let idx = conn
+        .get_property(false, root, atom("_NET_CURRENT_DESKTOP")?, AtomEnum::CARDINAL, 0, 1)
+        .ok()?
+        .reply()
+        .ok()?
+        .value32()?
+        .collect::<Vec<u32>>()[0] as usize;
+    let values = conn
+        .get_property(false, root, atom("_NET_WORKAREA")?, AtomEnum::CARDINAL, 0, 64)
+        .ok()?
+        .reply()
+        .ok()?
+        .value32()?
+        .collect::<Vec<u32>>();
+    let i = idx * 4;
+    if values.len() < i + 4 {
+        return None;
+    }
+    Some(Workarea {
+        x: values[i] as i32,
+        y: values[i + 1] as i32,
+        w: values[i + 2] as i32,
+        h: values[i + 3] as i32,
+    })
+}
+
+/// Which of the 8 snap zones the window (by center) is closest to.
+fn zone_for(x: i32, y: i32, w: i32, h: i32, wa: Workarea) -> &'static str {
+    let fx = (x as f64 + w as f64 / 2.0 - wa.x as f64) / wa.w as f64;
+    let fy = (y as f64 + h as f64 / 2.0 - wa.y as f64) / wa.h as f64;
+    let col = if fx < 0.33 { 0 } else if fx > 0.67 { 2 } else { 1 };
+    let row = if fy < 0.33 { 0 } else if fy > 0.67 { 2 } else { 1 };
+    match (row, col) {
+        (0, 0) => "tl",
+        (0, 1) | (1, 1) => "t",
+        (0, 2) => "tr",
+        (1, 0) => "l",
+        (1, 2) => "r",
+        (2, 0) => "bl",
+        (2, 1) => "b",
+        (2, 2) => "br",
+        _ => "t",
+    }
+}
+
+/// Aligns the window to a zone, clamped inside the workarea so the notch
+/// never sits on top of the system bar or off-screen.
+fn place_zone(window: &tauri::WebviewWindow, zone: &str, wa: Workarea) {
+    let Ok(ws) = window.outer_size() else { return };
+    let (w, h) = (ws.width as i32, ws.height as i32);
+    let x = if zone.ends_with('l') {
+        wa.x
+    } else if zone.ends_with('r') {
+        wa.x + wa.w - w
+    } else {
+        wa.x + (wa.w - w) / 2
+    };
+    let y = if zone.starts_with('b') {
+        wa.y + wa.h - h
+    } else if zone.starts_with('t') {
+        wa.y
+    } else {
+        wa.y + (wa.h - h) / 2
+    };
+    let x = x.clamp(wa.x, (wa.x + wa.w - w).max(wa.x));
+    let y = y.clamp(wa.y, (wa.y + wa.h - h).max(wa.y));
+    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+}
+
+#[derive(Default)]
+struct DragWatch(Mutex<Option<std::time::Instant>>);
+
+/// After a drag ends (window stops moving for ~280ms), snap to the nearest
+/// zone and tell the frontend which zone it now lives in.
+fn spawn_snap_watcher(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(80));
+        let due = {
+            let st = app.state::<DragWatch>();
+            let mut watch = st.0.lock().unwrap();
+            match *watch {
+                Some(at) if at.elapsed() >= Duration::from_millis(280) => {
+                    *watch = None;
+                    true
+                }
+                _ => false,
+            }
+        };
+        if !due {
+            continue;
+        }
+        let Some(win) = app.get_webview_window("main") else { continue };
+        let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else { continue };
+        let Some(wa) = read_workarea() else { continue };
+        let zone = zone_for(pos.x, pos.y, size.width as i32, size.height as i32, wa);
+        place_zone(&win, zone, wa);
+        let _ = app.emit("zone-changed", zone);
+    });
 }
 
 /// Click-through poller: the window ignores the pointer everywhere except
@@ -201,23 +318,160 @@ fn mixer_set(index: u32, vol: Option<u32>, mute: Option<bool>) -> Result<(), Str
     Ok(())
 }
 
+/* ───────────────────────── system status ───────────────────────── */
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SysStatus {
+    vol: u32,
+    mute: bool,
+    wifi: bool,
+    battery_pct: Option<u32>,
+    charging: bool,
+    dnd: bool,
+}
+
+fn run_cmd(cmd: &str, args: &[&str]) -> Option<String> {
+    let out = std::process::Command::new(cmd)
+        .env("LC_ALL", "C")
+        .args(args)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+#[tauri::command]
+fn sys_status() -> SysStatus {
+    // default output sink volume + mute
+    let vol = run_cmd("pactl", &["-f", "json", "get-sink-volume", "@DEFAULT_SINK@"])
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| {
+            let vals: Vec<f64> = v
+                .get("volume")?
+                .as_object()?
+                .values()
+                .filter_map(|c| c.get("value").and_then(|x| x.as_f64()))
+                .collect();
+            let n = vals.len().max(1) as f64;
+            Some((vals.iter().sum::<f64>() / n / 655.36).round().clamp(0.0, 100.0) as u32)
+        })
+        .unwrap_or(100);
+    let mute = run_cmd("pactl", &["get-sink-mute", "@DEFAULT_SINK@"])
+        .map(|s| s.contains("yes"))
+        .unwrap_or(false);
+    let wifi = run_cmd("nmcli", &["-t", "-f", "TYPE,STATE", "device"])
+        .map(|s| s.lines().any(|l| l.starts_with("wifi:") && l.contains("connected")))
+        .unwrap_or(false);
+    let battery = std::fs::read_dir("/sys/class/power_supply")
+        .ok()
+        .and_then(|d| {
+            d.filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .find(|p| {
+                    p.file_name()
+                        .is_some_and(|n| n.to_string_lossy().starts_with("BAT"))
+                })
+        })
+        .map(|b| {
+            let pct = std::fs::read_to_string(b.join("capacity"))
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok());
+            let charging = std::fs::read_to_string(b.join("status"))
+                .map(|s| s.trim() == "Charging")
+                .unwrap_or(false);
+            (pct, charging)
+        });
+    let dnd = run_cmd(
+        "gsettings",
+        &["get", "org.gnome.desktop.notifications", "show-banners"],
+    )
+    .map(|s| s.trim() == "false")
+    .unwrap_or(false);
+    SysStatus {
+        vol,
+        mute,
+        wifi,
+        battery_pct: battery.map(|(p, _)| p).flatten(),
+        charging: battery.map(|(_, c)| c).unwrap_or(false),
+        dnd,
+    }
+}
+
+#[tauri::command]
+fn sys_set(vol: Option<u32>, mute: Option<bool>, dnd: Option<bool>) -> Result<(), String> {
+    if let Some(v) = vol {
+        run_cmd(
+            "pactl",
+            &["set-sink-volume", "@DEFAULT_SINK@", &format!("{v}%")],
+        )
+        .ok_or_else(|| "pactl set-sink-volume failed".to_string())?;
+    }
+    if let Some(m) = mute {
+        run_cmd(
+            "pactl",
+            &["set-sink-mute", "@DEFAULT_SINK@", if m { "1" } else { "0" }],
+        )
+        .ok_or_else(|| "pactl set-sink-mute failed".to_string())?;
+    }
+    if let Some(d) = dnd {
+        run_cmd(
+            "gsettings",
+            &[
+                "set",
+                "org.gnome.desktop.notifications",
+                "show-banners",
+                if d { "false" } else { "true" },
+            ],
+        )
+        .ok_or_else(|| "gsettings failed".to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(OverlayState::default())
+        .manage(DragWatch::default())
         .invoke_handler(tauri::generate_handler![
             set_hit_rect,
             media_state,
             media_control,
             mixer_state,
-            mixer_set
+            mixer_set,
+            sys_status,
+            sys_set
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                pin_to_top_center(&window);
+                // top-center, below the system bar, inside the workarea
+                let wa = read_workarea();
+                if let Some(wa) = wa {
+                    place_zone(&window, "t", wa);
+                } else {
+                    let Ok(Some(monitor)) = window.current_monitor() else {
+                        return Ok(());
+                    };
+                    let screen = monitor.size();
+                    let win = window.outer_size().unwrap_or_default();
+                    let x = screen.width.saturating_sub(win.width) / 2;
+                    let _ = window.set_position(tauri::PhysicalPosition::new(x, 32));
+                }
+                // remember drags so the snap watcher can finish them
+                let app2 = app.handle().clone();
+                window.on_window_event(move |ev| {
+                    if let tauri::WindowEvent::Moved(_) = ev {
+                        *app2.state::<DragWatch>().0.lock().unwrap() =
+                            Some(std::time::Instant::now());
+                    }
+                });
             }
             spawn_hit_tester(app.handle().clone());
             spawn_media(app.handle().clone());
+            spawn_snap_watcher(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useMedia, useMixerApps } from "../../hooks/useMedia";
+import { useSysStatus } from "../../hooks/useSysStatus";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BatteryFull, Check, CheckSquare, Crop, Download, Droplets, GripHorizontal, Mic, Moon,
-  MousePointer2, Move, Pin, Search, Sparkles, Volume2, Wifi, X,
+  Activity, BatteryCharging, BatteryFull, BatteryLow, BatteryMedium, Bell, BellOff, Check, CheckSquare,
+  Crop, Download, Droplets, GripHorizontal, Mic, Moon, MousePointer2, Move, Pin, Search, Sparkles,
+  Volume2, VolumeX, Wifi, WifiOff, X,
 } from "lucide-react";
 import Lekuvo, { LekuvoMark } from "../Lekuvo";
 import type { LekuvoMood, SkinId } from "../Lekuvo";
@@ -60,7 +63,12 @@ export default function NotchOverlay() {
 
   // chrome / layout
   const mode = "notch" as const; // overlay: always notch style
-  const pos: PosId = "t"; // overlay: pinned to top-center
+  // live zone: the Rust side snaps the window after a drag and reports it
+  const [pos, setPos] = useState<PosId>("t");
+  useEffect(() => {
+    const un = listen<PosId>("zone-changed", e => setPos(e.payload));
+    return () => { un.then(f => f()); };
+  }, []);
       const [hover, setHover] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [hinted, setHinted] = useState(false);
@@ -94,9 +102,12 @@ export default function NotchOverlay() {
     getCurrentWindow().startDragging().catch(err => console.error("lekuvo: startDragging failed:", err));
   };
 
-  // media + mixer: real system state (MPRIS / PulseAudio)
+  // media + mixer + system status: real system state
   const media = useMedia();
   const mixer = useMixerApps();
+  const sys = useSysStatus();
+  const [volOpen, setVolOpen] = useState(false);
+  const [volDrag, setVolDrag] = useState<number | null>(null);
   // focus (starts at 24:58, just like the character sheet)
   const [focusMode, setFocusMode] = useState<"focus" | "break">("focus");
   const [focusLeft, setFocusLeft] = useState(24 * 60 + 58);
@@ -372,8 +383,10 @@ export default function NotchOverlay() {
   useEffect(() => {
     const w = dims.w + SH * 2;
     const h = dims.h + (view === "open" ? 40 : 4);
-    void invoke("set_hit_rect", { x: (size.w - w) / 2, y: 0, w, h }).catch(console.error);
-  }, [dims.w, dims.h, size.w, view]);
+    const x = p.ax * (size.w - w);
+    const y = p.ay * (size.h - h);
+    void invoke("set_hit_rect", { x, y, w, h }).catch(console.error);
+  }, [dims.w, dims.h, size.w, size.h, view, p.ax, p.ay]);
 
   const R = view === "idle" ? 22 : 30;
   const radius =
@@ -541,8 +554,16 @@ export default function NotchOverlay() {
                   style={{ width: dims.w, height: dims.h, background: `radial-gradient(120% 80% at 0% 0%, ${activeTab.color}24, transparent 60%)` }}
                   className="flex flex-col"
                 >
-                  <div className="flex items-center gap-2 p-3 pb-0 shrink-0">
-                    <div className="flex-1 min-w-0 flex items-center gap-0.5 bg-white/[0.08] rounded-full p-1 overflow-x-auto no-scrollbar">
+                        <div className="flex items-center gap-2 p-3 pb-0 shrink-0">
+                          <button
+                            onPointerDown={onHandleDown}
+                            aria-label="Move Lekuvo"
+                            title="Drag to move"
+                            className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing bg-white/10 text-white/60 hover:text-white hover:bg-white/20 transition"
+                          >
+                            <Move className="w-3.5 h-3.5" />
+                          </button>
+                          <div className="flex-1 min-w-0 flex items-center gap-0.5 bg-white/[0.08] rounded-full p-1 overflow-x-auto no-scrollbar">
                       {TABS.map(tb => {
                         const on = tb.id === tab;
                         return (
@@ -560,20 +581,20 @@ export default function NotchOverlay() {
                       })}
                     </div>
                     <button
-                      onPointerDown={onHandleDown}
-                      aria-label="Move Lekuvo"
-                      title="Drag to move"
-                      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing bg-white/10 text-white/60 hover:text-white hover:bg-white/20 transition"
+                      onClick={() => { touched.current = true; setHinted(true); setPinned(true); }}
+                      aria-label="Pin open"
+                      title="Pin open"
+                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition ${pinned ? "bg-butter text-navy" : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"}`}
                     >
-                      <Move className="w-3.5 h-3.5" />
+                      <Pin className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => { touched.current = true; setPinned(v => !v); }}
-                      aria-label={pinned ? "Close" : "Pin open"}
-                      title={pinned ? "Close" : "Pin open"}
-                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition ${pinned ? "bg-white text-navy" : "bg-white/10 hover:bg-white/20"}`}
+                      onClick={() => { setPinned(false); setHover(false); }}
+                      aria-label="Close"
+                      title="Close"
+                      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition"
                     >
-                      {pinned ? <X className="w-4 h-4" /> : <Pin className="w-3.5 h-3.5" />}
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
 
@@ -625,14 +646,85 @@ export default function NotchOverlay() {
                     </AnimatePresence>
                   </div>
 
-                  {/* Lekuvo's corner: he hangs here, with a tip per tab */}
-                  <div className="h-[48px] shrink-0 border-t border-white/10 flex items-center pr-4" style={{ paddingLeft: perch ? 16 : HANG_W + 34 }}>
-                    <AnimatePresence mode="wait">
-                      <motion.p key={tab} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-white/60 truncate">
-                        <b className="text-white/90 font-extrabold">Lekuvo:</b> {TIPS[tab]}
-                      </motion.p>
-                    </AnimatePresence>
-                  </div>
+                        {/* Lekuvo's corner: he hangs here, with a tip per tab —
+                            plus a real system status cluster on the right */}
+                        <div className="h-[48px] shrink-0 border-t border-white/10 flex items-center gap-2 pr-3" style={{ paddingLeft: perch ? 16 : HANG_W + 34 }}>
+                          <AnimatePresence mode="wait">
+                            <motion.p key={tab} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-white/60 truncate">
+                              <b className="text-white/90 font-extrabold">Lekuvo:</b> {TIPS[tab]}
+                            </motion.p>
+                          </AnimatePresence>
+
+                          <div className="ml-auto flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => sys.set({ dnd: !sys.st?.dnd })}
+                              aria-label={sys.st?.dnd ? "Enable notifications" : "Silence notifications"}
+                              title={sys.st?.dnd ? "Notifications: silenced" : "Notifications: on"}
+                              className={`w-8 h-8 rounded-full flex items-center justify-center transition ${sys.st?.dnd ? "bg-butter text-navy" : "bg-white/10 text-white/70 hover:bg-white/20 hover:text-white"}`}
+                            >
+                              {sys.st?.dnd ? <BellOff className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+                            </button>
+
+                            <span
+                              className={`w-8 h-8 rounded-full flex items-center justify-center bg-white/10 ${sys.st?.wifi ? "text-white/70" : "text-white/35"}`}
+                              title={sys.st?.wifi ? "Wi-Fi connected" : "Wi-Fi off"}
+                            >
+                              {sys.st?.wifi ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                            </span>
+
+                            <div className="relative">
+                              <button
+                                onClick={() => setVolOpen(v => !v)}
+                                aria-label="Volume"
+                                title="Volume"
+                                className="w-8 h-8 rounded-full flex items-center justify-center bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition"
+                              >
+                                {sys.st && (sys.st.mute || sys.st.vol === 0) ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                              </button>
+                              {volOpen && (
+                                <div className="absolute bottom-full mb-2 right-0 w-48 rounded-2xl bg-notch-2 border border-white/15 shadow-[0_16px_36px_-12px_rgba(0,0,0,0.6)] p-3 flex items-center gap-2">
+                                  <input
+                                    type="range" min={0} max={100}
+                                    value={volDrag ?? sys.st?.vol ?? 50}
+                                    aria-label="Output volume"
+                                    className="chunky flex-1 min-w-0"
+                                    style={{ ["--p" as string]: `${volDrag ?? sys.st?.vol ?? 50}%`, ["--c" as string]: "#F8D77B" } as React.CSSProperties}
+                                    onPointerDown={() => setVolDrag(volDrag ?? sys.st?.vol ?? 50)}
+                                    onPointerUp={() => setVolDrag(null)}
+                                    onPointerCancel={() => setVolDrag(null)}
+                                    onChange={e => {
+                                      const v = Number(e.target.value);
+                                      setVolDrag(v);
+                                      sys.set({ vol: v, mute: v === 0 ? true : false });
+                                    }}
+                                  />
+                                  <button
+                                    onClick={() => sys.set({ mute: !sys.st?.mute })}
+                                    aria-label={sys.st?.mute ? "Unmute" : "Mute"}
+                                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${sys.st?.mute ? "bg-white text-navy" : "bg-white/10 text-white/70 hover:bg-white/20"}`}
+                                  >
+                                    {sys.st?.mute ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {sys.st?.batteryPct != null && (
+                              <span
+                                className="flex items-center gap-1.5 bg-white/10 rounded-full px-2 h-8 text-white/70"
+                                title={`Battery ${sys.st.batteryPct}%${sys.st.charging ? " · charging" : ""}`}
+                              >
+                                {sys.st.charging ? <BatteryCharging className="w-3.5 h-3.5 text-mint" />
+                                  : sys.st.batteryPct > 60 ? <BatteryFull className="w-3.5 h-3.5" />
+                                  : sys.st.batteryPct > 25 ? <BatteryMedium className="w-3.5 h-3.5" />
+                                  : <BatteryLow className="w-3.5 h-3.5 text-pink" />}
+                                <span className="text-[11px] font-bold tabular-nums">{sys.st.batteryPct}%</span>
+                              </span>
+                            )}
+
+                            <span className="text-[11px] font-extrabold text-white/80 tabular-nums ml-0.5">{time}</span>
+                          </div>
+                        </div>
                 </div>
               )}
             </motion.div>
