@@ -74,122 +74,110 @@ fn read_workarea() -> Option<Workarea> {
     })
 }
 
-/// Which of the 8 snap zones the window (by center) is closest to.
-fn zone_for(x: i32, y: i32, w: i32, h: i32, wa: Workarea) -> &'static str {
-    let fx = (x as f64 + w as f64 / 2.0 - wa.x as f64) / wa.w as f64;
-    let fy = (y as f64 + h as f64 / 2.0 - wa.y as f64) / wa.h as f64;
-    let col = if fx < 0.33 { 0 } else if fx > 0.67 { 2 } else { 1 };
-    let row = if fy < 0.33 { 0 } else if fy > 0.67 { 2 } else { 1 };
-    match (row, col) {
-        (0, 0) => "tl",
-        (0, 1) | (1, 1) => "t",
-        (0, 2) => "tr",
-        (1, 0) => "l",
-        (1, 2) => "r",
-        (2, 0) => "bl",
-        (2, 1) => "b",
-        (2, 2) => "br",
-        _ => "t",
-    }
+/// Nearest monitor to a point, as (x0, y0, x1, y1).
+fn nearest_monitor(app: &AppHandle, cx: i32, cy: i32) -> Option<(i32, i32, i32, i32)> {
+    let mons = app.available_monitors().ok()?;
+    mons.iter()
+        .map(|m| {
+            let p = m.position();
+            let s = m.size();
+            (p.x, p.y, p.x + s.width as i32, p.y + s.height as i32)
+        })
+        .min_by_key(|(x0, y0, x1, y1)| {
+            let dx = (cx - (x0 + x1) / 2).abs();
+            let dy = (cy - (y0 + y1) / 2).abs();
+            dx + dy
+        })
 }
 
-/// Aligns the window to a zone. Top zones normally sit just below the
-/// system bar; `flush_top` hugs the physical screen edge instead,
-/// overlapping the bar. Bottom/side zones clamp inside the workarea.
-fn place_zone(window: &tauri::WebviewWindow, zone: &str, wa: Workarea, flush_top: bool) {
-    let Ok(ws) = window.outer_size() else { return };
-    let (w, h) = (ws.width as i32, ws.height as i32);
-    let x = if zone.ends_with('l') {
-        wa.x
-    } else if zone.ends_with('r') {
-        wa.x + wa.w - w
-    } else {
-        wa.x + (wa.w - w) / 2
-    };
-    // physical top edge of the monitor this window is on
-    let top_y = window
-        .current_monitor()
-        .ok()
-        .flatten()
-        .map(|m| m.position().y)
-        .unwrap_or(0);
-    let y = if zone.starts_with('t') {
-        if flush_top {
-            top_y
-        } else {
-            wa.y
-        }
-    } else if zone.starts_with('b') {
-        wa.y + wa.h - h
-    } else {
-        wa.y + (wa.h - h) / 2
-    };
-    // horizontal stays inside the workarea; vertical may enter the top bar
-    let x = x.clamp(wa.x, (wa.x + wa.w - w).max(wa.x));
-    let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+/// Bounding box covering every monitor (the desktop union).
+fn monitor_union(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+    let mons = app.available_monitors().ok()?;
+    let mut rects = mons.iter().map(|m| {
+        let p = m.position();
+        let s = m.size();
+        (p.x, p.y, p.x + s.width as i32, p.y + s.height as i32)
+    });
+    let first = rects.next()?;
+    Some(rects.fold(first, |a, b| {
+        (a.0.min(b.0), a.1.min(b.1), a.2.max(b.2), a.3.max(b.3))
+    }))
 }
+
+/// Orientation of the notch for a free window position: the nearest
+/// screen-edge zone (t/tl/tr/l/r/bl/b/br) when it hugs an edge of its
+/// monitor, or "free" when it floats mid-screen.
+fn derive_zone(app: &AppHandle, x: i32, y: i32, w: i32, h: i32) -> String {
+    let Some((mx0, my0, mx1, my1)) = nearest_monitor(app, x + w / 2, y + h / 2) else {
+        return "t".into();
+    };
+    let near = 60;
+    let d_top = (y - my0).abs();
+    let d_bottom = ((my1) - (y + h)).abs();
+    let d_left = (x - mx0).abs();
+    let d_right = ((mx1) - (x + w)).abs();
+    let mut zone = String::from("free");
+    if d_top < near {
+        zone = "t".into();
+    } else if d_bottom < near {
+        zone = "b".into();
+    }
+    if d_left < near {
+        zone = match zone.as_str() {
+            "t" => "tl".into(),
+            "b" => "bl".into(),
+            _ => "l".into(),
+        };
+    } else if d_right < near {
+        zone = match zone.as_str() {
+            "t" => "tr".into(),
+            "b" => "br".into(),
+            _ => "r".into(),
+        };
+    }
+    zone
+}
+
+/// Free placement: the window stays wherever it was dropped (exact x,y is
+/// persisted). Only a guard keeps it from being lost entirely off-screen.
 
 #[derive(Default)]
 struct DragWatch(Mutex<Option<std::time::Instant>>);
+#[derive(Default)]
+struct ZoneState(Mutex<String>);
 
-/// Where the notch lives: one of the 8 zones, plus (for top zones)
-/// whether it hugs the physical screen edge, over the system bar.
-#[derive(Clone, Copy)]
-struct Placement {
-    zone: &'static str,
-    flush_top: bool,
-}
-
-fn zone_file() -> std::path::PathBuf {
+fn pos_file() -> std::path::PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
             let home = std::env::var_os("HOME").unwrap_or_default();
             std::path::PathBuf::from(home).join(".config")
         });
-    base.join("lekuvo-desktop").join("zone")
+    base.join("lekuvo-desktop").join("position")
 }
 
-fn save_placement(p: Placement) {
-    if let Some(dir) = zone_file().parent() {
+fn save_position(x: i32, y: i32) {
+    if let Some(dir) = pos_file().parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let body = if p.flush_top {
-        format!("{}:flush", p.zone)
-    } else {
-        p.zone.to_string()
-    };
-    let _ = std::fs::write(zone_file(), body);
+    let _ = std::fs::write(pos_file(), format!("{x},{y}"));
 }
 
-fn load_placement() -> Placement {
-    let raw = std::fs::read_to_string(zone_file())
-        .map(|s| s.trim().to_string())
-        .unwrap_or_default();
-    let (zone_part, flush) = match raw.split_once(':') {
-        Some((z, rest)) => (z, rest == "flush"),
-        None => (raw.as_str(), false),
-    };
-    let zone = match zone_part {
-        "tl" => "tl",
-        "t" => "t",
-        "tr" => "tr",
-        "l" => "l",
-        "r" => "r",
-        "bl" => "bl",
-        "b" => "b",
-        "br" => "br",
-        _ => "t",
-    };
-    Placement {
-        zone,
-        flush_top: flush,
-    }
+fn load_position() -> Option<(i32, i32)> {
+    let raw = std::fs::read_to_string(pos_file()).ok()?;
+    let (a, b) = raw.trim().split_once(',')?;
+    Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
 }
 
-/// After a drag ends (window stops moving for ~280ms), snap to the nearest
-/// zone and tell the frontend which zone it now lives in.
-fn spawn_snap_watcher(app: AppHandle) {
+#[tauri::command]
+fn current_zone(state: State<'_, ZoneState>) -> String {
+    state.0.lock().unwrap().clone()
+}
+
+/// After a drag ends (window stops moving for ~280ms): keep the window
+/// exactly where it was dropped, clamp only against falling fully
+/// off-desktop, persist the position, and report the derived orientation.
+fn spawn_placement_watcher(app: AppHandle) {
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(80));
         let due = {
@@ -208,12 +196,22 @@ fn spawn_snap_watcher(app: AppHandle) {
         }
         let Some(win) = app.get_webview_window("main") else { continue };
         let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else { continue };
-        let Some(wa) = read_workarea() else { continue };
-        let zone = zone_for(pos.x, pos.y, size.width as i32, size.height as i32, wa);
-        // released inside the top bar strip → the user wants it flush there
-        let flush_top = zone.starts_with('t') && pos.y < wa.y - 2;
-        place_zone(&win, zone, wa, flush_top);
-        save_placement(Placement { zone, flush_top });
+        let (w, h) = (size.width as i32, size.height as i32);
+        // guard: at least a grab strip of the window stays on the desktop
+        let mut x = pos.x;
+        let mut y = pos.y;
+        if let Some((ux0, uy0, ux1, uy1)) = monitor_union(&app) {
+            let nx = x.clamp(ux0 - w + 220, (ux1 - 220).max(ux0 - w + 220));
+            let ny = y.clamp(uy0, uy1.saturating_sub(160));
+            if (nx, ny) != (x, y) {
+                let _ = win.set_position(tauri::PhysicalPosition::new(nx, ny));
+                x = nx;
+                y = ny;
+            }
+        }
+        save_position(x, y);
+        let zone = derive_zone(&app, x, y, w, h);
+        *app.state::<ZoneState>().0.lock().unwrap() = zone.clone();
         let _ = app.emit("zone-changed", zone);
     });
 }
@@ -778,6 +776,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(OverlayState::default())
         .manage(DragWatch::default())
+        .manage(ZoneState::default())
         .invoke_handler(tauri::generate_handler![
             set_hit_rect,
             media_state,
@@ -786,6 +785,7 @@ pub fn run() {
             mixer_set,
             sys_status,
             sys_set,
+            current_zone,
             net_status,
             wifi_radio,
             wifi_connect,
@@ -794,22 +794,43 @@ pub fn run() {
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                // restore the last zone (or top-center); flush-top is
-                // restored too, otherwise it sits just below the system bar
-                let placement = load_placement();
-                let wa = read_workarea();
-                if let Some(wa) = wa {
-                    place_zone(&window, placement.zone, wa, placement.flush_top);
-                } else {
-                    let Ok(Some(monitor)) = window.current_monitor() else {
-                        return Ok(());
-                    };
-                    let screen = monitor.size();
-                    let win = window.outer_size().unwrap_or_default();
-                    let x = screen.width.saturating_sub(win.width) / 2;
-                    let _ = window.set_position(tauri::PhysicalPosition::new(x, 32));
+                // free placement: restore the exact dropped position, or
+                // default to top-center just below the system bar
+                match load_position() {
+                    Some((x, y)) => {
+                        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                    }
+                    None => {
+                        let ws = window.outer_size().unwrap_or_default();
+                        let w = ws.width as i32;
+                        match read_workarea() {
+                            Some(wa) => {
+                                let x = wa.x + (wa.w - w) / 2;
+                                let _ =
+                                    window.set_position(tauri::PhysicalPosition::new(x, wa.y));
+                            }
+                            None => {
+                                if let Ok(Some(monitor)) = window.current_monitor() {
+                                    let screen = monitor.size();
+                                    let x = screen.width.saturating_sub(ws.width) / 2;
+                                    let _ = window
+                                        .set_position(tauri::PhysicalPosition::new(x, 32));
+                                }
+                            }
+                        }
+                    }
                 }
-                // remember drags so the snap watcher can finish them
+                // record orientation for the frontend + watch future drags
+                if let (Ok(pos), Ok(size)) = (window.outer_position(), window.outer_size()) {
+                    let zone = derive_zone(
+                        app.handle(),
+                        pos.x,
+                        pos.y,
+                        size.width as i32,
+                        size.height as i32,
+                    );
+                    *app.state::<ZoneState>().0.lock().unwrap() = zone;
+                }
                 let app2 = app.handle().clone();
                 window.on_window_event(move |ev| {
                     if let tauri::WindowEvent::Moved(_) = ev {
@@ -820,7 +841,7 @@ pub fn run() {
             }
             spawn_hit_tester(app.handle().clone());
             spawn_media(app.handle().clone());
-            spawn_snap_watcher(app.handle().clone());
+            spawn_placement_watcher(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -54,11 +54,11 @@ export default function NotchOverlay() {
   const [size, setSize] = useState({ w: 760, h: 520 });
 
   // chrome / layout
-  const mode = "notch" as const; // overlay: always notch style
-  // live zone: the Rust side snaps the window after a drag and reports it
+  // live orientation: the Rust side derives it from the dropped position
   const [pos, setPos] = useState<PosId>("t");
   useEffect(() => {
     const un = listen<PosId>("zone-changed", e => setPos(e.payload));
+    void invoke<string>("current_zone").then(z => setPos(z as PosId)).catch(console.error);
     return () => { un.then(f => f()); };
   }, []);
       const [hover, setHover] = useState(false);
@@ -315,7 +315,7 @@ export default function NotchOverlay() {
 
   /* ───────── geometry ───────── */
   const p = POSITIONS.find(x => x.id === pos) ?? POSITIONS[1];
-  const flush = mode === "notch";
+  const flush = p.edge !== "none"; // attached to a screen edge (not floating)
   const gap = 12;
   const inset = {
     top: p.edge === "top" && flush ? 0 : gap,
@@ -348,14 +348,16 @@ export default function NotchOverlay() {
     p.edge === "top" ? `0px 0px ${R}px ${R}px`
     : p.edge === "bottom" ? `${R}px ${R}px 0px 0px`
     : p.edge === "left" ? `0px ${R}px ${R}px 0px`
-    : `${R}px 0px 0px ${R}px`;
+    : p.edge === "right" ? `${R}px 0px 0px ${R}px`
+    : `${R}px ${R}px ${R}px ${R}px`; // floating island
 
   const g = (at: string) => `radial-gradient(circle at ${at}, transparent ${SH - 0.5}px, ${NOTCH} ${SH}px)`;
   const shoulders: CSSProperties[] =
     p.edge === "top" ? [{ left: -SH, top: 0, background: g("0 100%") }, { right: -SH, top: 0, background: g("100% 100%") }]
     : p.edge === "bottom" ? [{ left: -SH, bottom: 0, background: g("0 0") }, { right: -SH, bottom: 0, background: g("100% 0") }]
     : p.edge === "left" ? [{ left: 0, top: -SH, background: g("100% 0") }, { left: 0, bottom: -SH, background: g("100% 100%") }]
-    : [{ right: 0, top: -SH, background: g("0 0") }, { right: 0, bottom: -SH, background: g("0 100%") }];
+    : p.edge === "right" ? [{ right: 0, top: -SH, background: g("0 0") }, { right: 0, bottom: -SH, background: g("0 100%") }]
+    : []; // floating island has no shoulders
 
   const perch = p.ay === 1; // notch at the bottom → Lekuvo sits on top instead of hanging below
   const d = toast ? describe(toast) : null;

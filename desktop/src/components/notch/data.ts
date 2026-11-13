@@ -78,8 +78,8 @@ export const NOISES: { key: NoiseKey; label: string; icon: LucideIcon; grad: str
 ];
 export type NoiseState = Record<NoiseKey, { on: boolean; vol: number }>;
 
-export type PosId = "tl" | "t" | "tr" | "l" | "r" | "bl" | "b" | "br";
-export type Edge = "top" | "bottom" | "left" | "right";
+export type PosId = "tl" | "t" | "tr" | "l" | "r" | "bl" | "b" | "br" | "free";
+export type Edge = "top" | "bottom" | "left" | "right" | "none";
 export const POSITIONS: { id: PosId; label: string; ax: number; ay: number; edge: Edge }[] = [
   { id: "tl", label: "Top left", ax: 0, ay: 0, edge: "top" },
   { id: "t", label: "Top center", ax: 0.5, ay: 0, edge: "top" },
@@ -89,6 +89,7 @@ export const POSITIONS: { id: PosId; label: string; ax: number; ay: number; edge
   { id: "bl", label: "Bottom left", ax: 0, ay: 1, edge: "bottom" },
   { id: "b", label: "Bottom center", ax: 0.5, ay: 1, edge: "bottom" },
   { id: "br", label: "Bottom right", ax: 1, ay: 1, edge: "bottom" },
+  { id: "free", label: "Floating", ax: 0.5, ay: 0.5, edge: "none" },
 ];
 
 export interface Wall { id: string; label: string; skin: SkinId; top: string; bottom: string; w1: string; w2: string; w3: string; swatch: string }
