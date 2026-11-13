@@ -671,21 +671,67 @@ fn wifi_connect(ssid: String, password: Option<String>) -> Result<(), String> {
     }
 }
 
+fn bt_powered() -> bool {
+    run_cmd("bluetoothctl", &["show"])
+        .map(|s| s.contains("Powered: yes"))
+        .unwrap_or(false)
+}
+
 #[tauri::command]
 fn bt_power(on: bool) -> Result<(), String> {
-    run_cmd("bluetoothctl", &["power", if on { "on" } else { "off" }])
-        .ok_or_else(|| "bluetoothctl power failed".to_string())
-        .map(|_| ())
+    // rfkill soft-block makes bluez answer "Busy"; clear it first
+    let _ = run_cmd("rfkill", &["unblock", "bluetooth"]);
+    let verb = if on { "on" } else { "off" };
+    let out = std::process::Command::new("bluetoothctl")
+        .env("LC_ALL", "C")
+        .args(["power", verb])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    // bluetoothctl exits 0 even on failure — the message is the only truth
+    if text.contains("Failed") {
+        return Err(text
+            .lines()
+            .find(|l| l.contains("Failed"))
+            .unwrap_or("bluetoothctl failed")
+            .trim()
+            .to_string());
+    }
+    if on {
+        // verify the adapter actually stays up (some adapters flap)
+        std::thread::sleep(Duration::from_millis(600));
+        if !bt_powered() {
+            return Err("adapter powered on, then dropped again (rfkill/driver?)".into());
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
 fn bt_device(mac: String, connect: bool) -> Result<(), String> {
-    run_cmd(
-        "bluetoothctl",
-        &[if connect { "connect" } else { "disconnect" }, &mac],
-    )
-    .ok_or_else(|| "bluetoothctl connect failed".to_string())
-        .map(|_| ())
+    let out = std::process::Command::new("bluetoothctl")
+        .env("LC_ALL", "C")
+        .args([if connect { "connect" } else { "disconnect" }, &mac])
+        .output()
+        .map_err(|e| e.to_string())?;
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    if text.contains("Failed") {
+        return Err(text
+            .lines()
+            .find(|l| l.contains("Failed"))
+            .unwrap_or("bluetoothctl failed")
+            .trim()
+            .to_string());
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
