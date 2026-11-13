@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity, BatteryFull, Check, CheckSquare, Crop, Download, Droplets, Mic, Moon,
@@ -64,6 +65,25 @@ export default function NotchOverlay() {
   const [tab, setTab] = useState<TabId>("music");
   const [toast, setToast] = useState<Toast | null>(null);
   const [clock, setClock] = useState(() => new Date());
+
+  /* window dragging: grab any notch surface to move the overlay, but only
+     after real movement so plain clicks (open/pin) still land, and never
+     from interactive controls inside the expanded panel */
+  const drag = useRef<{ x: number; y: number; armed: boolean } | null>(null);
+  const onDragDown = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("button, input, textarea, a, [role='slider']")) return;
+    drag.current = { x: e.clientX, y: e.clientY, armed: true };
+  };
+  const onDragMove = (e: ReactPointerEvent) => {
+    const d = drag.current;
+    if (!d?.armed) return;
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) {
+      d.armed = false;
+      getCurrentWindow().startDragging().catch(() => {});
+    }
+  };
+  const onDragEnd = () => { drag.current = null; };
 
   // music
   const [songIdx, setSongIdx] = useState(0);
@@ -405,6 +425,10 @@ export default function NotchOverlay() {
         transition={SPRING}
         onHoverStart={enter}
         onHoverEnd={leave}
+        onPointerDown={onDragDown}
+        onPointerMove={onDragMove}
+        onPointerUp={onDragEnd}
+        onPointerLeave={onDragEnd}
       >
         {flush && shoulders.map((s, i) => <span key={i} className="absolute pointer-events-none" style={{ width: SH, height: SH, ...s }} />)}
 

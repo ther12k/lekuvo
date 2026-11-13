@@ -156,11 +156,12 @@ html[data-theme="dusk"] {
 html { scroll-behavior: smooth; }
 body {
   font-family: var(--font-body);
-  background: var(--color-cream);
+  /* Overlay window: the page must stay see-through around the notch.
+     (The landing page this stylesheet came from used --color-cream.) */
+  background: transparent;
   color: var(--color-navy);
-  overflow-x: hidden;
+  overflow: hidden;
   -webkit-font-smoothing: antialiased;
-  transition: background-color .45s ease, color .45s ease;
 }
 .font-display { font-family: var(--font-display); letter-spacing: -0.025em; }
 .font-mono { font-family: var(--font-mono); }
