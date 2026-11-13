@@ -8,6 +8,8 @@ export interface SysStatus {
   batteryPct: number | null;
   charging: boolean;
   dnd: boolean;
+  brightness: number | null;
+  dark: boolean;
 }
 
 /** Real system status: default-sink volume, wifi link, battery, DND. */
@@ -23,7 +25,7 @@ export function useSysStatus() {
       window.clearInterval(id);
     };
   }, []);
-  const set = (patch: { vol?: number; mute?: boolean; dnd?: boolean }) => {
+  const set = (patch: { vol?: number; mute?: boolean; dnd?: boolean; brightness?: number; dark?: boolean }) => {
     setSt(s => (s ? { ...s, ...patch } : s));
     void invoke("sys_set", patch).catch(console.error);
   };

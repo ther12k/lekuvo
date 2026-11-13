@@ -329,6 +329,8 @@ struct SysStatus {
     battery_pct: Option<u32>,
     charging: bool,
     dnd: bool,
+    brightness: Option<u32>,
+    dark: bool,
 }
 
 fn run_cmd(cmd: &str, args: &[&str]) -> Option<String> {
@@ -390,6 +392,26 @@ fn sys_status() -> SysStatus {
     )
     .map(|s| s.trim() == "false")
     .unwrap_or(false);
+    let brightness = run_cmd(
+        "gdbus",
+        &[
+            "call", "--session", "--dest", "org.gnome.SettingsDaemon.Power",
+            "--object-path", "/org/gnome/SettingsDaemon/Power",
+            "--method", "org.freedesktop.DBus.Properties.Get",
+            "org.gnome.SettingsDaemon.Power.Screen", "Brightness",
+        ],
+    )
+    .and_then(|s| {
+        s.split(|c: char| !c.is_ascii_digit())
+            .find(|p| !p.is_empty())
+            .and_then(|d| d.parse::<u32>().ok())
+    });
+    let dark = run_cmd(
+        "gsettings",
+        &["get", "org.gnome.desktop.interface", "color-scheme"],
+    )
+    .map(|s| s.contains("prefer-dark"))
+    .unwrap_or(false);
     SysStatus {
         vol,
         mute,
@@ -397,11 +419,19 @@ fn sys_status() -> SysStatus {
         battery_pct: battery.map(|(p, _)| p).flatten(),
         charging: battery.map(|(_, c)| c).unwrap_or(false),
         dnd,
+        brightness,
+        dark,
     }
 }
 
 #[tauri::command]
-fn sys_set(vol: Option<u32>, mute: Option<bool>, dnd: Option<bool>) -> Result<(), String> {
+fn sys_set(
+    vol: Option<u32>,
+    mute: Option<bool>,
+    dnd: Option<bool>,
+    brightness: Option<u32>,
+    dark: Option<bool>,
+) -> Result<(), String> {
     if let Some(v) = vol {
         run_cmd(
             "pactl",
@@ -428,7 +458,193 @@ fn sys_set(vol: Option<u32>, mute: Option<bool>, dnd: Option<bool>) -> Result<()
         )
         .ok_or_else(|| "gsettings failed".to_string())?;
     }
+    if let Some(b) = brightness {
+        run_cmd(
+            "gdbus",
+            &[
+                "call", "--session", "--dest", "org.gnome.SettingsDaemon.Power",
+                "--object-path", "/org/gnome/SettingsDaemon/Power",
+                "--method", "org.freedesktop.DBus.Properties.Set",
+                "org.gnome.SettingsDaemon.Power.Screen", "Brightness",
+                &format!("<uint32 {b}>"),
+            ],
+        )
+        .ok_or_else(|| "brightness set failed".to_string())?;
+    }
+    if let Some(d) = dark {
+        run_cmd(
+            "gsettings",
+            &[
+                "set",
+                "org.gnome.desktop.interface",
+                "color-scheme",
+                if d { "prefer-dark" } else { "default" },
+            ],
+        )
+        .ok_or_else(|| "gsettings color-scheme failed".to_string())?;
+    }
     Ok(())
+}
+
+/* ───────────────────────── Wi-Fi + Bluetooth ───────────────────────── */
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WifiNet {
+    ssid: String,
+    signal: u32,
+    secure: bool,
+    connected: bool,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct BtDev {
+    mac: String,
+    name: String,
+    connected: bool,
+}
+
+#[derive(serde::Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+struct NetStatus {
+    wifi_radio: bool,
+    networks: Vec<WifiNet>,
+    wifi_error: Option<String>,
+    bt_available: bool,
+    bt_powered: bool,
+    devices: Vec<BtDev>,
+}
+
+/// Splits one `-t --escape yes` nmcli line into fields, unescaping `\:`.
+fn nmcli_fields(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut cur = String::new();
+    let mut escaped = false;
+    for c in line.chars() {
+        if escaped {
+            cur.push(c);
+            escaped = false;
+        } else if c == '\\' {
+            escaped = true;
+        } else if c == ':' {
+            fields.push(cur.clone());
+            cur.clear();
+        } else {
+            cur.push(c);
+        }
+    }
+    fields.push(cur);
+    fields
+}
+
+#[tauri::command]
+fn net_status() -> NetStatus {
+    let mut st = NetStatus::default();
+    st.wifi_radio = run_cmd("nmcli", &["radio", "wifi"])
+        .map(|s| s.trim() == "enabled")
+        .unwrap_or(false);
+    if st.wifi_radio {
+        let mut nets: Vec<WifiNet> = run_cmd(
+            "nmcli",
+            &["-t", "-f", "IN-USE,SIGNAL,SECURITY,SSID", "--escape", "yes", "device", "wifi", "list"],
+        )
+        .map(|s| {
+            s.lines()
+                .filter_map(|l| {
+                    let f = nmcli_fields(l);
+                    if f.len() < 4 {
+                        return None;
+                    }
+                    Some(WifiNet {
+                        ssid: f[3].clone(),
+                        signal: f[1].parse().unwrap_or(0),
+                        secure: !f[2].is_empty(),
+                        connected: f[0] == "*",
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+        // strongest copy of each ssid, sorted by signal
+        nets.sort_by(|a, b| b.signal.cmp(&a.signal));
+        let mut seen = std::collections::HashSet::new();
+        nets.retain(|n| n.ssid.is_empty() == false && seen.insert(n.ssid.clone()));
+        st.networks = nets;
+    } else {
+        st.wifi_error = Some("Wi-Fi radio is off".into());
+    }
+    let show = run_cmd("bluetoothctl", &["show"]).unwrap_or_default();
+    st.bt_available = show.contains("Controller");
+    if st.bt_available {
+        st.bt_powered = show.contains("Powered: yes");
+        let mut devices: Vec<BtDev> = run_cmd("bluetoothctl", &["devices"])
+            .map(|s| {
+                s.lines()
+                    .filter_map(|l| {
+                        let rest = l.strip_prefix("Device ")?;
+                        let (mac, name) = rest.split_once(' ')?;
+                        Some(BtDev {
+                            mac: mac.to_string(),
+                            name: name.to_string(),
+                            connected: false,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        for d in devices.iter_mut() {
+            d.connected = run_cmd("bluetoothctl", &["info", &d.mac])
+                .map(|s| s.contains("Connected: yes"))
+                .unwrap_or(false);
+        }
+        devices.sort_by_key(|d| !d.connected);
+        st.devices = devices;
+    }
+    st
+}
+
+#[tauri::command]
+fn wifi_radio(on: bool) -> Result<(), String> {
+    run_cmd("nmcli", &["radio", "wifi", if on { "on" } else { "off" }])
+        .ok_or_else(|| "nmcli radio failed".to_string())
+        .map(|_| ())
+}
+
+#[tauri::command]
+fn wifi_connect(ssid: String, password: Option<String>) -> Result<(), String> {
+    let mut args: Vec<&str> = vec!["device", "wifi", "connect", &ssid];
+    let pw = password.unwrap_or_default();
+    if !pw.is_empty() {
+        args.extend(["password", &pw]);
+    }
+    let out = std::process::Command::new("nmcli")
+        .env("LC_ALL", "C")
+        .args(&args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+#[tauri::command]
+fn bt_power(on: bool) -> Result<(), String> {
+    run_cmd("bluetoothctl", &["power", if on { "on" } else { "off" }])
+        .ok_or_else(|| "bluetoothctl power failed".to_string())
+        .map(|_| ())
+}
+
+#[tauri::command]
+fn bt_device(mac: String, connect: bool) -> Result<(), String> {
+    run_cmd(
+        "bluetoothctl",
+        &[if connect { "connect" } else { "disconnect" }, &mac],
+    )
+    .ok_or_else(|| "bluetoothctl connect failed".to_string())
+        .map(|_| ())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -443,7 +659,12 @@ pub fn run() {
             mixer_state,
             mixer_set,
             sys_status,
-            sys_set
+            sys_set,
+            net_status,
+            wifi_radio,
+            wifi_connect,
+            bt_power,
+            bt_device
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {

@@ -1,9 +1,9 @@
 import type { LucideIcon } from "lucide-react";
-import { CheckSquare, Camera, ClipboardList, CloudRain, Music, SlidersHorizontal, TreePine, Timer, Waves, Music2, Flame, Wind, MoonStar, AudioWaveform } from "lucide-react";
+import { CheckSquare, Camera, ClipboardList, CloudRain, Music, Settings, SlidersHorizontal, TreePine, Timer, Waves, Music2, Flame, Wind, MoonStar, AudioWaveform } from "lucide-react";
 import type { LekuvoMood, SkinId } from "../Lekuvo";
 import type { NoiseKey } from "../../hooks/useNoise";
 
-export type TabId = "music" | "focus" | "todo" | "board" | "mixer" | "noise" | "mirror";
+export type TabId = "music" | "focus" | "todo" | "board" | "mixer" | "noise" | "mirror" | "system";
 
 export const TABS: { id: TabId; label: string; icon: LucideIcon; color: string; mood: LekuvoMood }[] = [
   { id: "music", label: "Music", icon: Music, color: "#9DB2FF", mood: "music" },
@@ -13,6 +13,7 @@ export const TABS: { id: TabId; label: string; icon: LucideIcon; color: string; 
   { id: "mixer", label: "Mixer", icon: SlidersHorizontal, color: "#FFB38A", mood: "chill" },
   { id: "noise", label: "Noise", icon: CloudRain, color: "#C4B5FD", mood: "calm" },
   { id: "mirror", label: "Mirror", icon: Camera, color: "#FF9EC4", mood: "hello" },
+  { id: "system", label: "System", icon: Settings, color: "#A5B4FC", mood: "hello" },
 ];
 
 /** what Lekuvo says in the panel footer for each tab */
@@ -24,6 +25,7 @@ export const TIPS: Record<TabId, string> = {
   mixer: "Every app gets its own volume knob.",
   noise: "Rain + kalimba = instant cozy.",
   mirror: "Your camera feed never leaves this page.",
+  system: "Wi-Fi, Bluetooth, brightness — all real, all here.",
 };
 
 export interface Song {

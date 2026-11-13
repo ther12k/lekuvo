@@ -12,6 +12,7 @@ import {
   Volume2, VolumeX, Wifi, WifiOff, X,
 } from "lucide-react";
 import Lekuvo, { LekuvoMark } from "../Lekuvo";
+import SystemPanel from "./SystemPanel";
 import type { LekuvoMood, SkinId } from "../Lekuvo";
 import { useNoise } from "../../hooks/useNoise";
 import { useTheme } from "../../theme";
@@ -642,6 +643,7 @@ export default function NotchOverlay() {
                         {tab === "mixer" && <MixerPanel apps={mixer.apps} onVol={mixer.setVol} onMute={mixer.setMute} />}
                         {tab === "noise" && <NoisePanel noise={noise} onToggle={toggleNoise} onVol={volNoise} />}
                         {tab === "mirror" && <MirrorPanel />}
+                        {tab === "system" && <SystemPanel />}
                       </motion.div>
                     </AnimatePresence>
                   </div>
@@ -665,12 +667,14 @@ export default function NotchOverlay() {
                               {sys.st?.dnd ? <BellOff className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
                             </button>
 
-                            <span
-                              className={`w-8 h-8 rounded-full flex items-center justify-center bg-white/10 ${sys.st?.wifi ? "text-white/70" : "text-white/35"}`}
-                              title={sys.st?.wifi ? "Wi-Fi connected" : "Wi-Fi off"}
+                            <button
+                              onClick={() => { touched.current = true; setHinted(true); setPinned(true); setTab("system"); }}
+                              aria-label="Wi-Fi and settings"
+                              title={sys.st?.wifi ? "Wi-Fi connected — open System" : "Wi-Fi — open System"}
+                              className={`w-8 h-8 rounded-full flex items-center justify-center bg-white/10 hover:bg-white/20 transition ${sys.st?.wifi ? "text-white/70 hover:text-white" : "text-white/35"}`}
                             >
                               {sys.st?.wifi ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-                            </span>
+                            </button>
 
                             <div className="relative">
                               <button
