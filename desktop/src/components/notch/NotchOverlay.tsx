@@ -712,10 +712,18 @@ export default function NotchOverlay() {
       </motion.div>
     </motion.div>
 
-    {/* hint */}
+    {/* hint — floats just beside the notch, wherever it currently lives */}
     <AnimatePresence>
       {!hinted && !toast && (
-        <motion.div key="hint" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute left-0 right-0 bottom-[60px] z-10 flex justify-center pointer-events-none">
+        <motion.div
+          key="hint"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          className={`absolute left-0 right-0 z-10 flex pointer-events-none
+            ${p.ay === 1 ? "bottom-[58px]" : p.ay === 0.5 ? "top-1/2" : "top-[58px]"}
+            ${p.ax === 0 ? "justify-start pl-6" : p.ax === 1 ? "justify-end pr-6" : "justify-center"}`}
+        >
           <div className="hint-bounce flex items-center gap-2 bg-notch text-white text-xs font-extrabold px-4 py-2.5 rounded-full shadow-[0_10px_24px_-10px_rgba(31,37,80,0.8)]">
             <MousePointer2 className="w-3.5 h-3.5 text-butter" /> Hover the notch · tap it on touch
           </div>
