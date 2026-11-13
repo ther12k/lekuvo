@@ -345,26 +345,26 @@ export function NoisePanel({
           const s = noise[n.key];
           return (
             <div key={n.key} className={`rounded-2xl p-2 flex flex-col items-center justify-between border transition ${s.on ? "bg-white/[0.14] border-white/30" : "bg-white/[0.05] border-white/10"}`}>
-              <button onClick={() => onToggle(n.key)} aria-label={n.label} className="flex flex-col items-center gap-1.5 w-full active:scale-95 transition">
-                <span className={`relative w-12 h-12 rounded-2xl flex items-center justify-center ${s.on ? "animate-floaty" : ""}`} style={{ background: n.grad, opacity: s.on ? 1 : 0.55 }}>
-                  <n.icon className="w-6 h-6 text-white" />
-                  {s.on && n.key === "rain" && [0, 1, 2].map(i => <span key={i} className="absolute w-[2px] h-2 bg-white/80 rounded-full anim-rain" style={{ left: 10 + i * 12, bottom: -2, animationDelay: `${i * 0.25}s` }} />)}
+              <button onClick={() => onToggle(n.key)} aria-label={n.label} className="flex flex-col items-center gap-1 w-full active:scale-95 transition">
+                <span className={`relative w-10 h-10 rounded-2xl flex items-center justify-center ${s.on ? "animate-floaty" : ""}`} style={{ background: n.grad, opacity: s.on ? 1 : 0.55 }}>
+                  <n.icon className="w-5 h-5 text-white" />
+                  {s.on && n.key === "rain" && [0, 1, 2].map(i => <span key={i} className="absolute w-[2px] h-2 bg-white/80 rounded-full anim-rain" style={{ left: 8 + i * 11, bottom: -2, animationDelay: `${i * 0.25}s` }} />)}
                 </span>
-                <span className="text-xs font-bold">{n.label}</span>
+                <span className="text-[11px] font-bold">{n.label}</span>
                 <span className="text-[9px] font-bold px-2 py-0.5 rounded-full" style={{ background: s.on ? n.color : "rgba(255,255,255,0.12)", color: s.on ? "#000" : undefined }}>{s.on ? "ON" : "OFF"}</span>
               </button>
               <input
                 type="range" min={5} max={100} value={s.vol} disabled={!s.on}
                 aria-label={`${n.label} volume`}
                 onChange={e => onVol(n.key, Number(e.target.value))}
-                className="chunky w-full mt-2 disabled:opacity-25"
+                className="chunky w-full mt-1 disabled:opacity-25"
                 style={sliderStyle(s.vol, n.color)}
               />
             </div>
           );
         })}
       </div>
-      <p className="text-[11px] text-white/40 text-center mt-2">Real sounds, made live in your browser. Stack as many as you like.</p>
+      <p className="text-[11px] text-white/40 text-center mt-1.5">Real sounds, made live on your desktop. Stack as many as you like.</p>
     </div>
   );
 }

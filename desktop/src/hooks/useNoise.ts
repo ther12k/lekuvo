@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 
-export type NoiseKey = "rain" | "forest" | "waves" | "kalimba";
+export type NoiseKey = "rain" | "forest" | "waves" | "kalimba" | "fire" | "wind" | "night" | "deep";
 
 interface Voice {
   master: GainNode;
@@ -29,6 +29,23 @@ export function useNoise() {
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    return src;
+  };
+
+  /** brown noise: integrated white noise, warm and rumbling */
+  const brownSource = (ctx: AudioContext) => {
+    const len = ctx.sampleRate * 4;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      last = (last + 0.02 * w) / 1.02;
+      d[i] = last * 3.5;
+    }
     const src = ctx.createBufferSource();
     src.buffer = buf;
     src.loop = true;
@@ -149,6 +166,114 @@ export function useNoise() {
         if (Math.random() > 0.6) window.setTimeout(pluck, 260);
       }, 900 + Math.random() * 700);
       cleanups.push(() => window.clearInterval(id));
+    }
+
+    if (key === "fire") {
+      // low rumble bed + random bright crackle bursts
+      const src = noiseSource(ctx);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 400;
+      const g = ctx.createGain();
+      g.gain.value = 0.14;
+      src.connect(lp).connect(g).connect(master);
+      src.start();
+      cleanups.push(() => src.stop());
+
+      const crackle = () => {
+        const t = ctx.currentTime;
+        const c = noiseSource(ctx);
+        const hp = ctx.createBiquadFilter();
+        hp.type = "highpass";
+        hp.frequency.value = 1600 + Math.random() * 2400;
+        const eg = ctx.createGain();
+        const peak = 0.05 + Math.random() * 0.12;
+        eg.gain.setValueAtTime(0, t);
+        eg.gain.linearRampToValueAtTime(peak, t + 0.004);
+        eg.gain.exponentialRampToValueAtTime(0.0001, t + 0.03 + Math.random() * 0.04);
+        c.connect(hp).connect(eg).connect(master);
+        c.start(t);
+        c.stop(t + 0.09);
+      };
+      let id = 0;
+      const schedule = () => {
+        crackle();
+        if (Math.random() > 0.72) window.setTimeout(crackle, 30 + Math.random() * 60);
+        id = window.setTimeout(schedule, 70 + Math.random() * 320);
+      };
+      schedule();
+      cleanups.push(() => window.clearTimeout(id));
+    }
+
+    if (key === "wind") {
+      // bandpassed noise with a slowly wandering center + gusts
+      const src = noiseSource(ctx);
+      const bp = ctx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = 500;
+      bp.Q.value = 0.8;
+      const g = ctx.createGain();
+      g.gain.value = 0.22;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.07;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 280;
+      lfo.connect(lfoGain).connect(bp.frequency);
+      const gust = ctx.createOscillator();
+      gust.frequency.value = 0.13;
+      const gustGain = ctx.createGain();
+      gustGain.gain.value = 0.12;
+      gust.connect(gustGain).connect(g.gain);
+      src.connect(bp).connect(g).connect(master);
+      src.start(); lfo.start(); gust.start();
+      cleanups.push(() => { src.stop(); lfo.stop(); gust.stop(); });
+    }
+
+    if (key === "night") {
+      // faint dark air + cricket trills
+      const src = noiseSource(ctx);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 300;
+      const g = ctx.createGain();
+      g.gain.value = 0.05;
+      src.connect(lp).connect(g).connect(master);
+      src.start();
+      cleanups.push(() => src.stop());
+
+      const trill = () => {
+        const t0 = ctx.currentTime;
+        const pulses = 3 + Math.floor(Math.random() * 3);
+        const f = 4000 + Math.random() * 700;
+        for (let i = 0; i < pulses; i++) {
+          const t = t0 + i * 0.075;
+          const o = ctx.createOscillator();
+          o.type = "sine";
+          o.frequency.value = f;
+          const eg = ctx.createGain();
+          eg.gain.setValueAtTime(0, t);
+          eg.gain.linearRampToValueAtTime(0.05, t + 0.012);
+          eg.gain.exponentialRampToValueAtTime(0.0001, t + 0.055);
+          o.connect(eg).connect(master);
+          o.start(t);
+          o.stop(t + 0.07);
+        }
+      };
+      const id = window.setInterval(trill, 1100 + Math.random() * 900);
+      cleanups.push(() => window.clearInterval(id));
+    }
+
+    if (key === "deep") {
+      // brown noise hum — steady and warm, for study
+      const src = brownSource(ctx);
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 240;
+      const g = ctx.createGain();
+      g.gain.value = 0.5;
+      src.connect(lp).connect(g).connect(master);
+      src.start();
+      cleanups.push(() => src.stop());
     }
 
     return {

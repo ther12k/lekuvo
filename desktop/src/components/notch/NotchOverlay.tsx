@@ -118,6 +118,7 @@ export default function NotchOverlay() {
   });
   const [noise, setNoise] = useState<NoiseState>({
     rain: { on: false, vol: 55 }, forest: { on: false, vol: 50 }, waves: { on: false, vol: 50 }, kalimba: { on: false, vol: 45 },
+    fire: { on: false, vol: 50 }, wind: { on: false, vol: 45 }, night: { on: false, vol: 45 }, deep: { on: false, vol: 40 },
   });
   const [water, setWater] = useState(3);
   const [docText, setDocText] = useState("");

@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { CheckSquare, Camera, ClipboardList, CloudRain, Music, SlidersHorizontal, TreePine, Timer, Waves, Music2 } from "lucide-react";
+import { CheckSquare, Camera, ClipboardList, CloudRain, Music, SlidersHorizontal, TreePine, Timer, Waves, Music2, Flame, Wind, MoonStar, AudioWaveform } from "lucide-react";
 import type { LekuvoMood, SkinId } from "../Lekuvo";
 import type { NoiseKey } from "../../hooks/useNoise";
 
@@ -67,6 +67,10 @@ export const NOISES: { key: NoiseKey; label: string; icon: LucideIcon; grad: str
   { key: "forest", label: "Forest", icon: TreePine, grad: "linear-gradient(135deg,#86E3C3,#1F8A63)", color: "#86E3C3" },
   { key: "waves", label: "Waves", icon: Waves, grad: "linear-gradient(135deg,#9DB2FF,#3446B6)", color: "#9DB2FF" },
   { key: "kalimba", label: "Kalimba", icon: Music2, grad: "linear-gradient(135deg,#F8D77B,#F08A4B)", color: "#F8D77B" },
+  { key: "fire", label: "Fire", icon: Flame, grad: "linear-gradient(135deg,#FDBA74,#DC2626)", color: "#FDBA74" },
+  { key: "wind", label: "Wind", icon: Wind, grad: "linear-gradient(135deg,#A5F3FC,#0EA5E9)", color: "#A5F3FC" },
+  { key: "night", label: "Night", icon: MoonStar, grad: "linear-gradient(135deg,#C4B5FD,#312E81)", color: "#C4B5FD" },
+  { key: "deep", label: "Deep", icon: AudioWaveform, grad: "linear-gradient(135deg,#6EE7B7,#0F766E)", color: "#6EE7B7" },
 ];
 export type NoiseState = Record<NoiseKey, { on: boolean; vol: number }>;
 
