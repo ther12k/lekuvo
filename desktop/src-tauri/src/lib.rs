@@ -93,9 +93,10 @@ fn zone_for(x: i32, y: i32, w: i32, h: i32, wa: Workarea) -> &'static str {
     }
 }
 
-/// Aligns the window to a zone, clamped inside the workarea so the notch
-/// never sits on top of the system bar or off-screen.
-fn place_zone(window: &tauri::WebviewWindow, zone: &str, wa: Workarea) {
+/// Aligns the window to a zone. Top zones normally sit just below the
+/// system bar; `flush_top` hugs the physical screen edge instead,
+/// overlapping the bar. Bottom/side zones clamp inside the workarea.
+fn place_zone(window: &tauri::WebviewWindow, zone: &str, wa: Workarea, flush_top: bool) {
     let Ok(ws) = window.outer_size() else { return };
     let (w, h) = (ws.width as i32, ws.height as i32);
     let x = if zone.ends_with('l') {
@@ -105,20 +106,39 @@ fn place_zone(window: &tauri::WebviewWindow, zone: &str, wa: Workarea) {
     } else {
         wa.x + (wa.w - w) / 2
     };
-    let y = if zone.starts_with('b') {
+    // physical top edge of the monitor this window is on
+    let top_y = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|m| m.position().y)
+        .unwrap_or(0);
+    let y = if zone.starts_with('t') {
+        if flush_top {
+            top_y
+        } else {
+            wa.y
+        }
+    } else if zone.starts_with('b') {
         wa.y + wa.h - h
-    } else if zone.starts_with('t') {
-        wa.y
     } else {
         wa.y + (wa.h - h) / 2
     };
+    // horizontal stays inside the workarea; vertical may enter the top bar
     let x = x.clamp(wa.x, (wa.x + wa.w - w).max(wa.x));
-    let y = y.clamp(wa.y, (wa.y + wa.h - h).max(wa.y));
     let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
 }
 
 #[derive(Default)]
 struct DragWatch(Mutex<Option<std::time::Instant>>);
+
+/// Where the notch lives: one of the 8 zones, plus (for top zones)
+/// whether it hugs the physical screen edge, over the system bar.
+#[derive(Clone, Copy)]
+struct Placement {
+    zone: &'static str,
+    flush_top: bool,
+}
 
 fn zone_file() -> std::path::PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
@@ -130,25 +150,40 @@ fn zone_file() -> std::path::PathBuf {
     base.join("lekuvo-desktop").join("zone")
 }
 
-fn save_zone(zone: &str) {
+fn save_placement(p: Placement) {
     if let Some(dir) = zone_file().parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    let _ = std::fs::write(zone_file(), zone);
+    let body = if p.flush_top {
+        format!("{}:flush", p.zone)
+    } else {
+        p.zone.to_string()
+    };
+    let _ = std::fs::write(zone_file(), body);
 }
 
-fn load_zone() -> Option<&'static str> {
-    let z = std::fs::read_to_string(zone_file()).ok()?;
-    match z.trim() {
-        "tl" => Some("tl"),
-        "t" => Some("t"),
-        "tr" => Some("tr"),
-        "l" => Some("l"),
-        "r" => Some("r"),
-        "bl" => Some("bl"),
-        "b" => Some("b"),
-        "br" => Some("br"),
-        _ => None,
+fn load_placement() -> Placement {
+    let raw = std::fs::read_to_string(zone_file())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let (zone_part, flush) = match raw.split_once(':') {
+        Some((z, rest)) => (z, rest == "flush"),
+        None => (raw.as_str(), false),
+    };
+    let zone = match zone_part {
+        "tl" => "tl",
+        "t" => "t",
+        "tr" => "tr",
+        "l" => "l",
+        "r" => "r",
+        "bl" => "bl",
+        "b" => "b",
+        "br" => "br",
+        _ => "t",
+    };
+    Placement {
+        zone,
+        flush_top: flush,
     }
 }
 
@@ -175,8 +210,10 @@ fn spawn_snap_watcher(app: AppHandle) {
         let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else { continue };
         let Some(wa) = read_workarea() else { continue };
         let zone = zone_for(pos.x, pos.y, size.width as i32, size.height as i32, wa);
-        place_zone(&win, zone, wa);
-        save_zone(zone);
+        // released inside the top bar strip → the user wants it flush there
+        let flush_top = zone.starts_with('t') && pos.y < wa.y - 2;
+        place_zone(&win, zone, wa, flush_top);
+        save_placement(Placement { zone, flush_top });
         let _ = app.emit("zone-changed", zone);
     });
 }
@@ -757,12 +794,12 @@ pub fn run() {
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                // restore the last zone (or top-center), below the system
-                // bar, inside the workarea
-                let zone = load_zone().unwrap_or("t");
+                // restore the last zone (or top-center); flush-top is
+                // restored too, otherwise it sits just below the system bar
+                let placement = load_placement();
                 let wa = read_workarea();
                 if let Some(wa) = wa {
-                    place_zone(&window, zone, wa);
+                    place_zone(&window, placement.zone, wa, placement.flush_top);
                 } else {
                     let Ok(Some(monitor)) = window.current_monitor() else {
                         return Ok(());
