@@ -6,6 +6,8 @@ members = [
     "crates/lekuvo-media",
     "crates/lekuvo-mascot",
 ]
+# Tauri desktop shell (develop branch) builds standalone via its own CLI.
+exclude = ["desktop/src-tauri"]
 
 [workspace.package]
 version = "0.1.0"

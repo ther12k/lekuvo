@@ -1,0 +1,629 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Activity, BatteryFull, Check, CheckSquare, Crop, Download, Droplets, Mic, Moon,
+  MousePointer2, Pin, Search, Sparkles, Volume2, Wifi, X,
+} from "lucide-react";
+import Lekuvo, { LekuvoMark } from "../Lekuvo";
+import type { LekuvoMood, SkinId } from "../Lekuvo";
+import { useNoise } from "../../hooks/useNoise";
+import { useTheme } from "../../theme";
+import type { NoiseKey } from "../../hooks/useNoise";
+import { BREAK_SECONDS, DICTATIONS, FOCUS_SECONDS, POSITIONS, SONGS, TABS, TIPS, fmt } from "./data";
+import type { Clip, MixerState, NoiseState, PosId, ShelfFile, TabId, Todo } from "./data";
+import { BoardPanel, FocusPanel, MirrorPanel, MixerPanel, MusicPanel, NoisePanel, TodoPanel } from "./panels";
+
+/* ───────── types ───────── */
+type Toast =
+  | { kind: "water" } | { kind: "todo"; text: string } | { kind: "prayer" } | { kind: "stretch" }
+  | { kind: "update" } | { kind: "updating" } | { kind: "updated" } | { kind: "dictate" }
+  | { kind: "pasted"; words: number } | { kind: "shot" } | { kind: "cheer"; msg: string; mood: LekuvoMood };
+type Live = "music" | "focus" | "idle";
+interface Action { label: string; primary?: boolean; run: () => void }
+interface Described { mood: LekuvoMood; title: string; sub: string; actions?: Action[]; busy?: boolean; wave?: boolean }
+
+const NOTCH = "var(--color-notch)";
+const TASKBAR = 0; // overlay: no fake taskbar
+const SH = 14; // size of the concave "shoulders" where the notch meets the screen edge
+const SPRING = { type: "spring" as const, stiffness: 340, damping: 30 };
+const HANG_W = 94; // hanging Lekuvo width → his hands sit 100/160 of the way down
+const canHover = () => typeof window !== "undefined" && !!window.matchMedia?.("(hover: hover)").matches;
+
+function Eq({ color, active = true }: { color: string; active?: boolean }) {
+  return (
+    <div className="flex items-end gap-[2.5px] h-3.5 shrink-0">
+      {[0, 1, 2, 3].map(i => (
+        <span key={i} className={`w-[3px] h-full rounded-full ${active ? "wave-bar" : ""}`} style={{ background: color, animationDelay: `${i * 0.13}s`, animationDuration: `${0.6 + i * 0.1}s` }} />
+      ))}
+    </div>
+  );
+}
+
+function Group({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-navy/45 mb-2.5">{title}</p>
+      {children}
+    </div>
+  );
+}
+
+/* ───────── component ───────── */
+export default function NotchOverlay() {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const inView = true;
+  const [size, setSize] = useState({ w: 760, h: 520 });
+
+  // chrome / layout
+  const mode = "notch" as const; // overlay: always notch style
+  const pos: PosId = "t"; // overlay: pinned to top-center
+      const [hover, setHover] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const [hinted, setHinted] = useState(false);
+  const [tab, setTab] = useState<TabId>("music");
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [clock, setClock] = useState(() => new Date());
+
+  // music
+  const [songIdx, setSongIdx] = useState(0);
+  const [playing, setPlaying] = useState(true);
+  const [t, setT] = useState(41);
+  // focus (starts at 24:58, just like the character sheet)
+  const [focusMode, setFocusMode] = useState<"focus" | "break">("focus");
+  const [focusLeft, setFocusLeft] = useState(24 * 60 + 58);
+  const [focusRun, setFocusRun] = useState(true);
+  const [sessions, setSessions] = useState(2);
+  // data
+  const [todos, setTodos] = useState<Todo[]>([
+    { id: 1, text: "Finish the pitch deck", done: true, time: "09:30" },
+    { id: 2, text: "Reply to Sarah about launch", done: false, time: "11:00" },
+    { id: 3, text: "Stretch + water break", done: false, time: "13:00" },
+  ]);
+  const [clips, setClips] = useState<Clip[]>([
+    { id: 1, kind: "link", label: "https://lekuvo.app/changelog", sub: "Link · 2m ago" },
+    { id: 2, kind: "text", label: "Ship the pill on Friday", sub: "Text · 14m ago" },
+    { id: 3, kind: "image", label: "moodboard_v3.png", sub: "Image · 1h ago", hue: "#FF9EC4" },
+  ]);
+  const [shelf, setShelf] = useState<ShelfFile[]>([]);
+  const [mixer, setMixer] = useState<MixerState>({
+    Spotify: { vol: 72, mute: false }, YouTube: { vol: 40, mute: false }, Discord: { vol: 30, mute: false }, Zoom: { vol: 85, mute: true },
+  });
+  const [noise, setNoise] = useState<NoiseState>({
+    rain: { on: false, vol: 55 }, forest: { on: false, vol: 50 }, waves: { on: false, vol: 50 }, kalimba: { on: false, vol: 45 },
+  });
+  const [water, setWater] = useState(3);
+  const [docText, setDocText] = useState("");
+  const [flash, setFlash] = useState(0);
+  const [thumb, setThumb] = useState(false);
+  const [liveTick, setLiveTick] = useState(0);
+
+  const engine = useNoise();
+  const touched = useRef(false);
+  const timers = useRef<number[]>([]);
+  const leaveTimer = useRef<number | null>(null);
+  const docTimer = useRef<number | null>(null);
+  const shotCount = useRef(2041);
+
+  const theme = useTheme();
+  const skin: SkinId = theme as SkinId;
+
+  const schedule = useCallback((fn: () => void, ms: number) => {
+    timers.current.push(window.setTimeout(fn, ms));
+  }, []);
+  const clearTimers = useCallback(() => {
+    timers.current.forEach(id => window.clearTimeout(id));
+    timers.current = [];
+  }, []);
+
+  useEffect(() => () => {
+    timers.current.forEach(id => window.clearTimeout(id));
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
+    if (docTimer.current) window.clearInterval(docTimer.current);
+  }, []);
+
+  /* measure stage */
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /* clock */
+  useEffect(() => {
+    const id = window.setInterval(() => setClock(new Date()), 15000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  /* music tick */
+  const song = SONGS[songIdx];
+  useEffect(() => {
+    if (!playing) return;
+    const id = window.setInterval(() => setT(p => p + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [playing]);
+  useEffect(() => {
+    if (t >= song.dur) { setSongIdx(i => (i + 1) % SONGS.length); setT(0); }
+  }, [t, song.dur]);
+
+  /* focus tick */
+  useEffect(() => {
+    if (!focusRun) return;
+    const id = window.setInterval(() => setFocusLeft(l => Math.max(0, l - 1)), 1000);
+    return () => window.clearInterval(id);
+  }, [focusRun]);
+  useEffect(() => {
+    if (!focusRun || focusLeft > 0) return;
+    if (focusMode === "focus") {
+      setSessions(s => Math.min(4, s + 1));
+      setFocusMode("break");
+      setFocusLeft(BREAK_SECONDS);
+      setToast({ kind: "cheer", msg: "Session done! Take 5 🎉", mood: "wow" });
+    } else {
+      setFocusMode("focus");
+      setFocusLeft(FOCUS_SECONDS);
+      setFocusRun(false);
+      setToast({ kind: "cheer", msg: "Break over. Ready for round 2?", mood: "hello" });
+    }
+  }, [focusLeft, focusRun, focusMode]);
+
+  /* live activity rotation in the compact pill */
+  const lives = useMemo<Live[]>(() => {
+    const a: Live[] = [];
+    if (playing) a.push("music");
+    if (focusRun) a.push("focus");
+    return a.length ? a : ["idle"];
+  }, [playing, focusRun]);
+  useEffect(() => {
+    if (lives.length < 2) return;
+    const id = window.setInterval(() => setLiveTick(n => n + 1), 3800);
+    return () => window.clearInterval(id);
+  }, [lives.length]);
+  const live = lives[liveTick % lives.length];
+
+  /* toast auto-dismiss */
+  useEffect(() => {
+    if (!toast || hover) return;
+    if (toast.kind === "dictate" || toast.kind === "updating") return;
+    const short = toast.kind === "pasted" || toast.kind === "cheer" || toast.kind === "updated" || toast.kind === "shot";
+    const id = window.setTimeout(() => setToast(null), short ? 2800 : 6500);
+    return () => window.clearTimeout(id);
+  }, [toast, hover]);
+
+  /* friendly intro: Lekuvo pokes you once the demo is visible */
+  useEffect(() => {
+    if (!inView) return;
+    const id = window.setTimeout(() => { if (!touched.current) setToast({ kind: "water" }); }, 2200);
+    return () => window.clearTimeout(id);
+  }, [inView]);
+
+  /* ───────── actions ───────── */
+  const fire = (next: Toast) => {
+    touched.current = true;
+    clearTimers();
+    setPinned(false);
+    setToast(next);
+  };
+  const addClip = (c: Omit<Clip, "id">) => setClips(cs => [{ id: Date.now(), ...c }, ...cs].slice(0, 8));
+
+  const typeDoc = (text: string) => {
+    if (docTimer.current) window.clearInterval(docTimer.current);
+    let i = 0;
+    docTimer.current = window.setInterval(() => {
+      i += 2;
+      setDocText(text.slice(0, i));
+      if (i >= text.length && docTimer.current) {
+        window.clearInterval(docTimer.current);
+        docTimer.current = null;
+      }
+    }, 22);
+  };
+  const runDictation = () => {
+    fire({ kind: "dictate" });
+    schedule(() => {
+      const text = DICTATIONS[Math.floor(Math.random() * DICTATIONS.length)];
+      setToast({ kind: "pasted", words: text.split(" ").length });
+      typeDoc(text);
+      addClip({ kind: "text", label: text, sub: "Text · dictated just now" });
+    }, 3000);
+  };
+  const runShot = () => {
+    fire({ kind: "shot" });
+    shotCount.current += 1;
+    setFlash(f => f + 1);
+    setThumb(true);
+    addClip({ kind: "image", label: `screenshot_${shotCount.current}.png`, sub: "Image · just now", hue: "#C4B5FD" });
+    schedule(() => setThumb(false), 3000);
+  };
+  const runUpdate = () => {
+    clearTimers();
+    setToast({ kind: "updating" });
+    schedule(() => setToast({ kind: "updated" }), 1900);
+  };
+
+  const toggleNoise = (k: NoiseKey) => {
+    const cur = noise[k];
+    if (cur.on) engine.stop(k);
+    else engine.start(k, (cur.vol / 100) * 0.8);
+    setNoise(n => ({ ...n, [k]: { ...n[k], on: !cur.on } }));
+  };
+  const volNoise = (k: NoiseKey, v: number) => {
+    setNoise(n => ({ ...n, [k]: { ...n[k], vol: v } }));
+    engine.setVolume(k, (v / 100) * 0.8);
+  };
+
+  const nextSong = () => { setSongIdx(i => (i + 1) % SONGS.length); setT(0); };
+  const prevSong = () => {
+    if (t > 5) setT(0);
+    else { setSongIdx(i => (i + SONGS.length - 1) % SONGS.length); setT(0); }
+  };
+
+  /* ───────── hover / pin ───────── */
+  const enter = () => {
+    if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
+    touched.current = true;
+    setHinted(true);
+    setHover(true);
+  };
+  const leave = () => {
+    leaveTimer.current = window.setTimeout(() => setHover(false), 160);
+  };
+
+  /* ───────── toast copy ───────── */
+  const describe = (x: Toast): Described => {
+    switch (x.kind) {
+      case "water":
+        return {
+          mood: "sip", title: "Hydrate, friend!",
+          sub: water >= 8 ? "You hit 8 glasses. Legend." : `Glass ${water + 1} of 8 is waiting`,
+          actions: [
+            { label: "Drank it", primary: true, run: () => { const w = Math.min(8, water + 1); setWater(w); setToast({ kind: "cheer", msg: `+1 glass · ${w}/8 today`, mood: "happy" }); } },
+            { label: "Later", run: () => setToast(null) },
+          ],
+        };
+      case "todo":
+        return {
+          mood: "reminder", title: x.text, sub: "Due right now. Lekuvo is poking you.",
+          actions: [
+            { label: "Done", primary: true, run: () => { setTodos(ts => ts.map(i => (i.text === x.text ? { ...i, done: true } : i))); setToast({ kind: "cheer", msg: "Checked off. Nice!", mood: "wow" }); } },
+            { label: "Snooze", run: () => setToast(null) },
+          ],
+        };
+      case "prayer":
+        return { mood: "calm", title: "Dhuhr in 5 minutes", sub: "Jakarta · Kemenag · works offline", actions: [{ label: "Thanks", primary: true, run: () => setToast(null) }] };
+      case "stretch":
+        return {
+          mood: "reminder", title: "45 minutes of sitting!", sub: "Stand up, roll those shoulders.",
+          actions: [
+            { label: "Stretched", primary: true, run: () => setToast({ kind: "cheer", msg: "Spine says thank you ✨", mood: "happy" }) },
+            { label: "Snooze", run: () => setToast(null) },
+          ],
+        };
+      case "update":
+        return { mood: "wow", title: "v2.1.6 is ready", sub: "Tiny fixes + a shinier kalimba", actions: [{ label: "Update", primary: true, run: runUpdate }, { label: "Later", run: () => setToast(null) }] };
+      case "updating":
+        return { mood: "focus", title: "Updating…", sub: "Lekuvo is changing colors", busy: true };
+      case "updated":
+        return { mood: "happy", title: "Updated to v2.1.6 ✨", sub: "Zero restarts. Zero fuss." };
+      case "dictate":
+        return { mood: "listen", title: "Listening…", sub: "Release Ctrl + Win to paste", wave: true };
+      case "pasted":
+        return { mood: "happy", title: `Pasted ${x.words} words`, sub: "Typed into Notepad. Nobody typed." };
+      case "shot":
+        return { mood: "cheese", title: "Screenshot copied", sub: "Saved to Board · Ctrl+V anywhere" };
+      case "cheer":
+        return { mood: x.mood, title: x.msg, sub: "Lekuvo approves." };
+    }
+  };
+
+  /* ───────── geometry ───────── */
+  const p = POSITIONS.find(x => x.id === pos) ?? POSITIONS[1];
+  const flush = mode === "notch";
+  const gap = 12;
+  const inset = {
+    top: p.edge === "top" && flush ? 0 : gap,
+    bottom: TASKBAR + (p.edge === "bottom" && flush ? 0 : gap),
+    left: p.edge === "left" && flush ? 0 : gap,
+    right: p.edge === "right" && flush ? 0 : gap,
+  };
+  const availW = Math.max(240, size.w - 24);
+  const availH = Math.max(260, size.h - TASKBAR - 24);
+
+  const view: "open" | "toast" | "idle" = pinned ? "open" : toast ? "toast" : hover ? "open" : "idle";
+  const idleW = live === "music" ? 276 : live === "focus" ? 256 : 240;
+  const dims =
+    view === "open" ? { w: Math.min(600, availW), h: Math.min(392, availH) }
+    : view === "toast" ? { w: Math.min(450, availW), h: 82 }
+    : { w: Math.min(idleW, availW), h: 46 };
+
+  const R = view === "idle" ? 22 : 30;
+  const radius =
+    mode === "island" ? `${R}px ${R}px ${R}px ${R}px`
+    : p.edge === "top" ? `0px 0px ${R}px ${R}px`
+    : p.edge === "bottom" ? `${R}px ${R}px 0px 0px`
+    : p.edge === "left" ? `0px ${R}px ${R}px 0px`
+    : `${R}px 0px 0px ${R}px`;
+
+  const g = (at: string) => `radial-gradient(circle at ${at}, transparent ${SH - 0.5}px, ${NOTCH} ${SH}px)`;
+  const shoulders: CSSProperties[] =
+    p.edge === "top" ? [{ left: -SH, top: 0, background: g("0 100%") }, { right: -SH, top: 0, background: g("100% 100%") }]
+    : p.edge === "bottom" ? [{ left: -SH, bottom: 0, background: g("0 0") }, { right: -SH, bottom: 0, background: g("100% 0") }]
+    : p.edge === "left" ? [{ left: 0, top: -SH, background: g("100% 0") }, { left: 0, bottom: -SH, background: g("100% 100%") }]
+    : [{ right: 0, top: -SH, background: g("0 0") }, { right: 0, bottom: -SH, background: g("0 100%") }];
+
+  const perch = p.ay === 1; // notch at the bottom → Lekuvo sits on top instead of hanging below
+  const d = toast ? describe(toast) : null;
+  const activeTab = TABS.find(x => x.id === tab) ?? TABS[0];
+  const time = clock.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const contentKey = view === "toast" && toast ? `toast-${toast.kind}` : view === "idle" ? `idle-${live}` : view;
+  const focusTotal = focusMode === "focus" ? FOCUS_SECONDS : BREAK_SECONDS;
+
+  const bodyClick = () => {
+    if (!toast || toast.kind === "dictate" || toast.kind === "updating") return;
+    setToast(null);
+    if (!canHover()) setPinned(true);
+  };
+
+  const pokes = [
+    { label: "Water", icon: Droplets, run: () => fire({ kind: "water" }) },
+    { label: "To-do due", icon: CheckSquare, run: () => fire({ kind: "todo", text: todos.find(i => !i.done)?.text ?? "Reply to Sarah" }) },
+    { label: "Prayer time", icon: Moon, run: () => fire({ kind: "prayer" }) },
+    { label: "Stretch", icon: Activity, run: () => fire({ kind: "stretch" }) },
+    { label: "Update pill", icon: Download, run: () => fire({ kind: "update" }) },
+    { label: "Dictate · Lekutalk", icon: Mic, run: runDictation },
+    { label: "Snap · Lekusnap", icon: Crop, run: runShot },
+  ];
+
+
+  /* ───────── render ───────── */
+  return (
+    <div ref={stageRef} className="relative w-full h-full overflow-hidden select-none">
+    {/* ═══════ the notch / island ═══════ */}
+    <motion.div
+      className="absolute pointer-events-none z-20"
+      initial={false}
+      animate={{ top: inset.top, bottom: inset.bottom, left: inset.left, right: inset.right }}
+      transition={{ type: "spring", stiffness: 260, damping: 28 }}
+    >
+      <motion.div
+        role="button"
+        tabIndex={0}
+        aria-label="Lekuvo Dynamic Island demo"
+        onKeyDown={e => {
+          if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setPinned(v => !v); touched.current = true; setHinted(true); }
+          if (e.key === "Escape") setPinned(false);
+        }}
+        className="absolute pointer-events-auto outline-none rounded-[26px] focus-visible:ring-2 focus-visible:ring-butter"
+        initial={false}
+        animate={{
+          width: dims.w, height: dims.h,
+          left: `${p.ax * 100}%`, top: `${p.ay * 100}%`,
+          x: `${-p.ax * 100}%`, y: `${-p.ay * 100}%`,
+        }}
+        transition={SPRING}
+        onHoverStart={enter}
+        onHoverEnd={leave}
+      >
+        {flush && shoulders.map((s, i) => <span key={i} className="absolute pointer-events-none" style={{ width: SH, height: SH, ...s }} />)}
+
+        <motion.div
+          className="absolute inset-0 overflow-hidden text-white shadow-[0_22px_50px_-16px_rgba(15,20,60,0.7)]"
+          style={{ background: NOTCH }}
+          initial={false}
+          animate={{ borderRadius: radius }}
+          transition={SPRING}
+        >
+          <AnimatePresence initial={false}>
+            <motion.div
+              key={contentKey}
+              className="absolute inset-x-0 top-0 flex justify-center"
+              initial={{ opacity: 0, filter: "blur(8px)", scale: 0.94 }}
+              animate={{ opacity: 1, filter: "blur(0px)", scale: 1, transition: { delay: 0.06, duration: 0.22 } }}
+              exit={{ opacity: 0, filter: "blur(6px)", transition: { duration: 0.12 } }}
+            >
+              {/* ── compact pill ── */}
+              {view === "idle" && (
+                <div
+                  style={{ width: dims.w, height: 46 }}
+                  className="flex items-center gap-2.5 pl-2 pr-4 cursor-pointer"
+                  onClick={() => { touched.current = true; setHinted(true); setPinned(true); }}
+                >
+                  <Lekuvo size={44} mood={live === "music" ? "music" : live === "focus" ? "focus" : "sleep"} skin={skin} track={false} shadow={false} dark className="shrink-0" />
+                  <span className="w-px h-6 bg-white/15 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-display font-semibold text-[13px] truncate">
+                        {live === "music" ? song.title : live === "focus" ? (focusMode === "focus" ? "Focus" : "Break") : "Lekuvo is napping…"}
+                      </span>
+                      {live === "music" && <Eq color={song.colors[0]} />}
+                      {live === "focus" && <span className="font-display font-semibold text-[13px] tabular-nums">{fmt(focusLeft)}</span>}
+                      {live === "idle" && <span className="text-[10px] text-white/35 shrink-0">hover me</span>}
+                    </div>
+                    {live !== "idle" && (
+                      <div className="h-1 rounded-full bg-white/15 mt-1.5 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-butter transition-[width] duration-1000 ease-linear"
+                          style={{ width: `${live === "music" ? (t / song.dur) * 100 : (1 - focusLeft / focusTotal) * 100}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── live activity / alert ── */}
+              {view === "toast" && d && (
+                <div style={{ width: dims.w, height: 82 }} className="flex items-center gap-3 pl-2.5 pr-3.5 cursor-pointer" onClick={bodyClick}>
+                  <Lekuvo size={72} mood={d.mood} skin={skin} shadow={false} dark className="shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-display font-bold text-[15.5px] leading-tight truncate">{d.title}</p>
+                    <p className="text-[11.5px] text-white/55 truncate mt-0.5">{d.sub}</p>
+                  </div>
+                  {d.wave && (
+                    <div className="flex items-center gap-[3px] h-8 shrink-0">
+                      {Array.from({ length: 9 }).map((_, i) => (
+                        <span key={i} className="w-[3px] h-full rounded-full bg-butter wave-bar" style={{ animationDelay: `${i * 0.08}s`, animationDuration: `${0.5 + (i % 4) * 0.15}s` }} />
+                      ))}
+                    </div>
+                  )}
+                  {d.busy && <span className="w-6 h-6 rounded-full border-[3px] border-white/20 border-t-butter animate-spin shrink-0" />}
+                  {d.actions && (
+                    <div className="flex flex-col sm:flex-row gap-1.5 shrink-0">
+                      {d.actions.map(a => (
+                        <button
+                          key={a.label}
+                          onClick={e => { e.stopPropagation(); a.run(); }}
+                          className={`text-[11.5px] font-extrabold px-3 py-1.5 rounded-full transition active:scale-95 ${a.primary ? "bg-butter text-navy hover:brightness-105" : "bg-white/12 hover:bg-white/22"}`}
+                        >
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── expanded panel ── */}
+              {view === "open" && (
+                <div
+                  style={{ width: dims.w, height: dims.h, background: `radial-gradient(120% 80% at 0% 0%, ${activeTab.color}24, transparent 60%)` }}
+                  className="flex flex-col"
+                >
+                  <div className="flex items-center gap-2 p-3 pb-0 shrink-0">
+                    <div className="flex-1 min-w-0 flex items-center gap-0.5 bg-white/[0.08] rounded-full p-1 overflow-x-auto no-scrollbar">
+                      {TABS.map(tb => {
+                        const on = tb.id === tab;
+                        return (
+                          <button
+                            key={tb.id}
+                            onClick={() => setTab(tb.id)}
+                            aria-label={tb.label}
+                            className={`relative shrink-0 h-8 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-extrabold transition-colors ${on ? "text-navy" : "text-white/55 hover:text-white"}`}
+                          >
+                            {on && <motion.span layoutId="tabpill" className="absolute inset-0 rounded-full" style={{ background: tb.color }} transition={{ type: "spring", stiffness: 420, damping: 32 }} />}
+                            <tb.icon className="relative w-4 h-4" />
+                            {on && <span className="relative">{tb.label}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button
+                      onClick={() => { touched.current = true; setPinned(v => !v); }}
+                      aria-label={pinned ? "Close" : "Pin open"}
+                      title={pinned ? "Close" : "Pin open"}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition ${pinned ? "bg-white text-navy" : "bg-white/10 hover:bg-white/20"}`}
+                    >
+                      {pinned ? <X className="w-4 h-4" /> : <Pin className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+
+                  <div className="flex-1 min-h-0 p-3">
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.div
+                        key={tab}
+                        className="h-full"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0, transition: { duration: 0.18 } }}
+                        exit={{ opacity: 0, y: -6, transition: { duration: 0.1 } }}
+                      >
+                        {tab === "music" && (
+                          <MusicPanel
+                            song={song} t={t} playing={playing}
+                            onToggle={() => setPlaying(v => !v)} onNext={nextSong} onPrev={prevSong}
+                            onSeek={s => setT(Math.max(0, Math.min(song.dur - 1, Math.floor(s))))}
+                          />
+                        )}
+                        {tab === "focus" && (
+                          <FocusPanel
+                            mode={focusMode} left={focusLeft} running={focusRun} sessions={sessions}
+                            onToggle={() => setFocusRun(v => !v)}
+                            onReset={() => { setFocusRun(false); setFocusLeft(focusTotal); }}
+                            onMode={m => { setFocusMode(m); setFocusRun(false); setFocusLeft(m === "focus" ? FOCUS_SECONDS : BREAK_SECONDS); }}
+                            onSkip={() => { setFocusLeft(3); setFocusRun(true); }}
+                          />
+                        )}
+                        {tab === "todo" && <TodoPanel todos={todos} setTodos={setTodos} onNudge={text => fire({ kind: "todo", text })} />}
+                        {tab === "board" && <BoardPanel clips={clips} shelf={shelf} setShelf={setShelf} />}
+                        {tab === "mixer" && <MixerPanel mixer={mixer} setMixer={setMixer} />}
+                        {tab === "noise" && <NoisePanel noise={noise} onToggle={toggleNoise} onVol={volNoise} />}
+                        {tab === "mirror" && <MirrorPanel />}
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+
+                  {/* Lekuvo's corner: he hangs here, with a tip per tab */}
+                  <div className="h-[48px] shrink-0 border-t border-white/10 flex items-center pr-4" style={{ paddingLeft: perch ? 16 : HANG_W + 34 }}>
+                    <AnimatePresence mode="wait">
+                      <motion.p key={tab} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="text-[12px] text-white/60 truncate">
+                        <b className="text-white/90 font-extrabold">Lekuvo:</b> {TIPS[tab]}
+                      </motion.p>
+                    </AnimatePresence>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </motion.div>
+
+        {/* hanging / perching Lekuvo (outside the clip so he can dangle) */}
+        <AnimatePresence>
+          {view === "open" && (perch ? (
+            <motion.div
+              key="perch"
+              className="absolute"
+              style={{ left: 24, top: -70 }}
+              initial={{ y: 26, opacity: 0 }}
+              animate={{ y: 0, opacity: 1, transition: { type: "spring", stiffness: 300, damping: 18, delay: 0.12 } }}
+              exit={{ y: 26, opacity: 0, transition: { duration: 0.12 } }}
+            >
+              <Lekuvo size={92} mood={activeTab.mood} skin={skin} shadow={false} interactive />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="hang"
+              className="absolute"
+              style={{ left: 22, top: `calc(100% - ${(HANG_W * 100) / 160}px)` }}
+              initial={{ y: -28, opacity: 0 }}
+              animate={{ y: 0, opacity: 1, transition: { type: "spring", stiffness: 300, damping: 16, delay: 0.14 } }}
+              exit={{ y: -22, opacity: 0, transition: { duration: 0.12 } }}
+            >
+              <Lekuvo size={HANG_W} pose="hang" mood={activeTab.mood} skin={skin} dark interactive />
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </motion.div>
+    </motion.div>
+
+    {/* hint */}
+    <AnimatePresence>
+      {!hinted && !toast && (
+        <motion.div key="hint" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute left-0 right-0 bottom-[60px] z-10 flex justify-center pointer-events-none">
+          <div className="hint-bounce flex items-center gap-2 bg-notch text-white text-xs font-extrabold px-4 py-2.5 rounded-full shadow-[0_10px_24px_-10px_rgba(31,37,80,0.8)]">
+            <MousePointer2 className="w-3.5 h-3.5 text-butter" /> Hover the notch · tap it on touch
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+
+    {/* screenshot flash + snip thumbnail */}
+    {flash > 0 && <div key={flash} className="absolute inset-0 bg-white anim-flash pointer-events-none z-30" />}
+    <AnimatePresence>
+      {thumb && (
+        <motion.div
+          initial={{ x: 150, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 150, opacity: 0 }}
+          transition={{ type: "spring", stiffness: 260, damping: 24 }}
+          className="absolute right-3 bottom-[56px] z-10 w-[160px] bg-notch/95 backdrop-blur rounded-2xl p-2 text-white shadow-2xl"
+        >
+          <div className="relative h-[62px] rounded-xl overflow-hidden bg-gradient-to-br from-royal via-peri to-butter">
+            <div className="absolute inset-2 border-2 border-dashed border-white/85 rounded" />
+            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 60"><path d="M14 40 Q30 14 48 36 T86 22" stroke="#fff" strokeWidth="3" fill="none" strokeLinecap="round" /></svg>
+          </div>
+          <p className="text-[10.5px] font-bold mt-1.5 flex items-center gap-1"><Check className="w-3 h-3 text-butter" /> Copied to clipboard</p>
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </div>
+  );
+}
