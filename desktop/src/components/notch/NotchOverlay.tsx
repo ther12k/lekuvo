@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
+import { useMedia, useMixerApps } from "../../hooks/useMedia";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity, BatteryFull, Check, CheckSquare, Crop, Download, Droplets, GripHorizontal, Mic, Moon,
@@ -11,8 +13,8 @@ import type { LekuvoMood, SkinId } from "../Lekuvo";
 import { useNoise } from "../../hooks/useNoise";
 import { useTheme } from "../../theme";
 import type { NoiseKey } from "../../hooks/useNoise";
-import { BREAK_SECONDS, DICTATIONS, FOCUS_SECONDS, POSITIONS, SONGS, TABS, TIPS, fmt } from "./data";
-import type { Clip, MixerState, NoiseState, PosId, ShelfFile, TabId, Todo } from "./data";
+import { BREAK_SECONDS, DICTATIONS, FOCUS_SECONDS, POSITIONS, TABS, TIPS, fmt } from "./data";
+import type { Clip, NoiseState, PosId, ShelfFile, Song, TabId, Todo } from "./data";
 import { BoardPanel, FocusPanel, MirrorPanel, MixerPanel, MusicPanel, NoisePanel, TodoPanel } from "./panels";
 
 /* ───────── types ───────── */
@@ -92,30 +94,32 @@ export default function NotchOverlay() {
     getCurrentWindow().startDragging().catch(err => console.error("lekuvo: startDragging failed:", err));
   };
 
-  // music
-  const [songIdx, setSongIdx] = useState(0);
-  const [playing, setPlaying] = useState(true);
-  const [t, setT] = useState(41);
+  // media + mixer: real system state (MPRIS / PulseAudio)
+  const media = useMedia();
+  const mixer = useMixerApps();
   // focus (starts at 24:58, just like the character sheet)
   const [focusMode, setFocusMode] = useState<"focus" | "break">("focus");
   const [focusLeft, setFocusLeft] = useState(24 * 60 + 58);
   const [focusRun, setFocusRun] = useState(true);
   const [sessions, setSessions] = useState(2);
-  // data
-  const [todos, setTodos] = useState<Todo[]>([
-    { id: 1, text: "Finish the pitch deck", done: true, time: "09:30" },
-    { id: 2, text: "Reply to Sarah about launch", done: false, time: "11:00" },
-    { id: 3, text: "Stretch + water break", done: false, time: "13:00" },
-  ]);
+  // data — to-dos persist locally, start real (empty), not demo rows
+  const [todos, setTodos] = useState<Todo[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem("lekuvo.todos") ?? "[]");
+      return Array.isArray(v) ? v : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("lekuvo.todos", JSON.stringify(todos)); } catch { /* private mode */ }
+  }, [todos]);
   const [clips, setClips] = useState<Clip[]>([
     { id: 1, kind: "link", label: "https://lekuvo.app/changelog", sub: "Link · 2m ago" },
     { id: 2, kind: "text", label: "Ship the pill on Friday", sub: "Text · 14m ago" },
     { id: 3, kind: "image", label: "moodboard_v3.png", sub: "Image · 1h ago", hue: "#FF9EC4" },
   ]);
   const [shelf, setShelf] = useState<ShelfFile[]>([]);
-  const [mixer, setMixer] = useState<MixerState>({
-    Spotify: { vol: 72, mute: false }, YouTube: { vol: 40, mute: false }, Discord: { vol: 30, mute: false }, Zoom: { vol: 85, mute: true },
-  });
   const [noise, setNoise] = useState<NoiseState>({
     rain: { on: false, vol: 55 }, forest: { on: false, vol: 50 }, waves: { on: false, vol: 50 }, kalimba: { on: false, vol: 45 },
     fire: { on: false, vol: 50 }, wind: { on: false, vol: 45 }, night: { on: false, vol: 45 }, deep: { on: false, vol: 40 },
@@ -165,16 +169,19 @@ export default function NotchOverlay() {
     return () => window.clearInterval(id);
   }, []);
 
-  /* music tick */
-  const song = SONGS[songIdx];
-  useEffect(() => {
-    if (!playing) return;
-    const id = window.setInterval(() => setT(p => p + 1), 1000);
-    return () => window.clearInterval(id);
-  }, [playing]);
-  useEffect(() => {
-    if (t >= song.dur) { setSongIdx(i => (i + 1) % SONGS.length); setT(0); }
-  }, [t, song.dur]);
+  /* real music state derived from MPRIS */
+  const playing = !!media.info?.playing;
+  const song: Song = media.info
+    ? {
+        title: media.info.title || "Unknown track",
+        artist: media.info.artist || "Unknown artist",
+        colors: ["#9DB2FF", "#4C5FD7"],
+        dur: Math.max(1, media.info.lengthSec),
+        lyrics: ["♪", "♫", media.info.title || "…"],
+        source: "MPRIS",
+      }
+    : { title: "Nothing playing", artist: "open your music player", colors: ["#9DB2FF", "#4C5FD7"], dur: 1, lyrics: ["♪"], source: "idle" };
+  const t = Math.min(media.positionSec, song.dur);
 
   /* focus tick */
   useEffect(() => {
@@ -282,12 +289,6 @@ export default function NotchOverlay() {
     engine.setVolume(k, (v / 100) * 0.8);
   };
 
-  const nextSong = () => { setSongIdx(i => (i + 1) % SONGS.length); setT(0); };
-  const prevSong = () => {
-    if (t > 5) setT(0);
-    else { setSongIdx(i => (i + SONGS.length - 1) % SONGS.length); setT(0); }
-  };
-
   /* ───────── hover / pin ───────── */
   const enter = () => {
     if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
@@ -365,6 +366,14 @@ export default function NotchOverlay() {
     view === "open" ? { w: Math.min(600, availW), h: Math.min(392, availH) }
     : view === "toast" ? { w: Math.min(450, availW), h: 82 }
     : { w: Math.min(idleW, availW), h: 46 };
+
+  /* report the notch's interactive bounds so the Rust side can make the
+     rest of the window click-through (shoulders + mascot overhang incl.) */
+  useEffect(() => {
+    const w = dims.w + SH * 2;
+    const h = dims.h + (view === "open" ? 40 : 4);
+    void invoke("set_hit_rect", { x: (size.w - w) / 2, y: 0, w, h }).catch(console.error);
+  }, [dims.w, dims.h, size.w, view]);
 
   const R = view === "idle" ? 22 : 30;
   const radius =
@@ -578,11 +587,25 @@ export default function NotchOverlay() {
                         exit={{ opacity: 0, y: -6, transition: { duration: 0.1 } }}
                       >
                         {tab === "music" && (
-                          <MusicPanel
-                            song={song} t={t} playing={playing}
-                            onToggle={() => setPlaying(v => !v)} onNext={nextSong} onPrev={prevSong}
-                            onSeek={s => setT(Math.max(0, Math.min(song.dur - 1, Math.floor(s))))}
-                          />
+                          media.info ? (
+                            <MusicPanel
+                              song={song} t={t} playing={playing}
+                              onToggle={() => media.control("playpause")}
+                              onNext={() => media.control("next")}
+                              onPrev={() => media.control("prev")}
+                              onSeek={s => media.info && media.info.lengthSec > 0 && media.control("seek", s / media.info.lengthSec)}
+                            />
+                          ) : (
+                            <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
+                              <span className="w-16 h-16 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center">
+                                <Lekuvo size={56} mood="sleep" skin={skin} shadow={false} dark />
+                              </span>
+                              <div>
+                                <p className="font-display font-bold text-white">Nothing is playing</p>
+                                <p className="text-xs text-white/50 mt-1">Open your music player — Lekuvo will catch it here.</p>
+                              </div>
+                            </div>
+                          )
                         )}
                         {tab === "focus" && (
                           <FocusPanel
@@ -595,7 +618,7 @@ export default function NotchOverlay() {
                         )}
                         {tab === "todo" && <TodoPanel todos={todos} setTodos={setTodos} onNudge={text => fire({ kind: "todo", text })} />}
                         {tab === "board" && <BoardPanel clips={clips} shelf={shelf} setShelf={setShelf} />}
-                        {tab === "mixer" && <MixerPanel mixer={mixer} setMixer={setMixer} />}
+                        {tab === "mixer" && <MixerPanel apps={mixer.apps} onVol={mixer.setVol} onMute={mixer.setMute} />}
                         {tab === "noise" && <NoisePanel noise={noise} onToggle={toggleNoise} onVol={volNoise} />}
                         {tab === "mirror" && <MirrorPanel />}
                       </motion.div>

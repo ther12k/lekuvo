@@ -7,10 +7,11 @@ import {
 } from "lucide-react";
 import Lekuvo from "../Lekuvo";
 import {
-  BREAK_SECONDS, FOCUS_SECONDS, MIXER_APPS, NOISES, fmt,
+  BREAK_SECONDS, FOCUS_SECONDS, NOISES, fmt,
 } from "./data";
-import type { Clip, MixerState, NoiseState, ShelfFile, Song, Todo } from "./data";
+import type { Clip, NoiseState, ShelfFile, Song, Todo } from "./data";
 import type { NoiseKey } from "../../hooks/useNoise";
+import type { MixerApp } from "../../hooks/useMedia";
 
 const sliderStyle = (v: number, c: string) => ({ ["--p" as string]: `${v}%`, ["--c" as string]: c });
 
@@ -296,40 +297,70 @@ export function BoardPanel({
   );
 }
 
-/* ───────────────────────── Mixer ───────────────────────── */
-export function MixerPanel({ mixer, setMixer }: { mixer: MixerState; setMixer: Dispatch<SetStateAction<MixerState>> }) {
+/* ───────────────────────── Mixer (real PulseAudio sinks) ───────────────────────── */
+const MIXER_PALETTE = ["#FFB38A", "#7DD3FC", "#86E3C3", "#F8D77B", "#C4B5FD", "#FF9EC4"];
+
+export function MixerPanel({
+  apps, onVol, onMute,
+}: {
+  apps: MixerApp[];
+  onVol: (index: number, v: number) => void;
+  onMute: (index: number, next: boolean) => void;
+}) {
+  // while dragging a slider, its local value wins so the 1.5s poll
+  // doesn't yank the thumb back
+  const [dragging, setDragging] = useState<{ index: number; v: number } | null>(null);
+
+  if (apps.length === 0) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-2 text-white/50">
+        <Volume2 className="w-6 h-6 opacity-40" />
+        <p className="text-xs">No apps are playing audio right now.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col justify-between">
-      <div className="space-y-2">
-        {MIXER_APPS.map(a => {
-          const m = mixer[a.key];
-          const live = !m.mute && m.vol > 0;
+      <div className="space-y-2 overflow-y-auto thin-scroll pr-0.5">
+        {apps.map((a, i) => {
+          const live = !a.mute && a.vol > 0;
+          const vol = dragging?.index === a.index ? dragging.v : a.vol;
           return (
-            <div key={a.key} className="flex items-center gap-2.5 bg-white/[0.06] border border-white/10 rounded-2xl px-2.5 py-2">
-              <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-display font-extrabold text-white shrink-0" style={{ background: a.color, opacity: live ? 1 : 0.4 }}>{a.letter}</span>
-              <span className="text-xs font-semibold w-[58px] shrink-0">{a.key}</span>
+            <div key={a.index} className="flex items-center gap-2.5 bg-white/[0.06] border border-white/10 rounded-2xl px-2.5 py-2">
+              <span className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-display font-extrabold text-white shrink-0" style={{ background: MIXER_PALETTE[i % MIXER_PALETTE.length], opacity: live ? 1 : 0.4 }}>
+                {a.name.charAt(0).toUpperCase() || "?"}
+              </span>
+              <span className="text-xs font-semibold w-[72px] shrink-0 truncate" title={a.name}>{a.name}</span>
               <input
-                type="range" min={0} max={100} value={m.vol} className="chunky flex-1 min-w-0"
-                style={sliderStyle(m.mute ? 0 : m.vol, "#FFB38A")}
-                onChange={e => setMixer(s => ({ ...s, [a.key]: { vol: Number(e.target.value), mute: false } }))}
+                type="range" min={0} max={100} value={vol} className="chunky flex-1 min-w-0"
+                style={sliderStyle(vol, MIXER_PALETTE[i % MIXER_PALETTE.length])}
+                onPointerDown={() => setDragging({ index: a.index, v: vol })}
+                onPointerUp={() => setDragging(null)}
+                onPointerCancel={() => setDragging(null)}
+                onChange={e => {
+                  const v = Number(e.target.value);
+                  setDragging({ index: a.index, v });
+                  onVol(a.index, v);
+                }}
               />
               <div className="flex items-end gap-[2px] h-4 w-[18px] shrink-0">
-                {[0, 1, 2, 3].map(i => (
-                  <span key={i} className={`w-[3px] h-full rounded-full bg-[#FFB38A] ${live ? "wave-bar" : ""}`} style={{ animationDelay: `${i * 0.13 + a.letter.charCodeAt(0) * 0.01}s`, animationDuration: `${0.5 + i * 0.12}s`, transform: live ? undefined : "scaleY(.15)" }} />
+                {[0, 1, 2, 3].map(k => (
+                  <span key={k} className={`w-[3px] h-full rounded-full bg-[#FFB38A] ${live ? "wave-bar" : ""}`} style={{ animationDelay: `${k * 0.13 + i * 0.05}s`, animationDuration: `${0.5 + k * 0.12}s`, transform: live ? undefined : "scaleY(.15)" }} />
                 ))}
               </div>
               <button
-                onClick={() => setMixer(s => ({ ...s, [a.key]: { ...s[a.key], mute: !s[a.key].mute } }))}
-                aria-label="Mute"
-                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${m.mute ? "bg-white text-[#1F2550]" : "bg-white/10 hover:bg-white/20"}`}
+                onClick={() => onMute(a.index, !a.mute)}
+                aria-label={a.mute ? "Unmute" : "Mute"}
+                className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition ${a.mute ? "bg-white text-[#1F2550]" : "bg-white/10 hover:bg-white/20"}`}
               >
-                {m.mute ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                {a.mute ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
               </button>
             </div>
           );
         })}
       </div>
-      <p className="text-[11px] text-white/40 text-center">Every app gets its own volume. No more 2am Discord blasts.</p>
+      <p className="text-[11px] text-white/40 text-center">Real per-app volumes, straight from PulseAudio.</p>
     </div>
   );
 }
