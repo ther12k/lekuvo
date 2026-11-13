@@ -2,14 +2,15 @@ import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Bell, Camera, CameraOff, Check, Copy, FileText, Image as ImageIcon, Layers, Link2, Pause, Play,
+  Bell, Camera, CameraOff, Check, Copy, FileText, Link2, Pause, Play,
   Plus, SkipBack, SkipForward, Sparkles, Volume2, VolumeX, X, FastForward, RotateCcw,
 } from "lucide-react";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import Lekuvo from "../Lekuvo";
 import {
   BREAK_SECONDS, FOCUS_SECONDS, NOISES, fmt,
 } from "./data";
-import type { Clip, NoiseState, ShelfFile, Song, Todo } from "./data";
+import type { NoiseState, Song, Todo } from "./data";
 import type { NoiseKey } from "../../hooks/useNoise";
 import type { MixerApp } from "../../hooks/useMedia";
 
@@ -38,8 +39,14 @@ export function MusicPanel({
           className="relative w-[104px] h-[104px] rounded-[26px] overflow-hidden"
           style={{ background: `linear-gradient(135deg, ${c0}, ${c1})`, boxShadow: `0 14px 34px -10px ${c0}` }}
         >
-          <div className="absolute -right-5 -top-5 w-20 h-20 rounded-full bg-white/25" />
-          <div className="absolute -left-6 -bottom-6 w-24 h-24 rounded-full border-[10px] border-white/20" />
+          {song.art ? (
+            <img src={song.art} alt="" draggable={false} className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <>
+              <div className="absolute -right-5 -top-5 w-20 h-20 rounded-full bg-white/25" />
+              <div className="absolute -left-6 -bottom-6 w-24 h-24 rounded-full border-[10px] border-white/20" />
+            </>
+          )}
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/80 flex items-center justify-center">
             <div className={`w-4 h-4 rounded-full bg-white/90 ${playing ? "animate-spin-slow" : ""}`} style={{ borderRight: `4px solid ${c0}` }} />
           </div>
@@ -216,81 +223,104 @@ export function TodoPanel({
 }
 
 /* ───────────────────────── Board & Shelf ───────────────────────── */
-export function BoardPanel({
-  clips, shelf, setShelf,
-}: { clips: Clip[]; shelf: ShelfFile[]; setShelf: Dispatch<SetStateAction<ShelfFile[]>> }) {
-  const [copied, setCopied] = useState<number | null>(null);
-  const [over, setOver] = useState(false);
+/* ───────────────────────── Board (real clipboard history) ───────────────────────── */
+interface ClipEntry {
+  id: number;
+  text: string;
+  at: number;
+}
 
-  const copy = (c: Clip) => {
-    navigator.clipboard?.writeText(c.label)?.catch(() => undefined);
-    setCopied(c.id);
+export function BoardPanel() {
+  const [entries, setEntries] = useState<ClipEntry[]>(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem("lekuvo.clips") ?? "[]");
+      return Array.isArray(v) ? v : [];
+    } catch {
+      return [];
+    }
+  });
+  const [copied, setCopied] = useState<number | null>(null);
+
+  // watch the real clipboard; new distinct text lands on top of the board
+  useEffect(() => {
+    let alive = true;
+    let last = "";
+    const tick = () => {
+      readText()
+        .then(t => {
+          if (!alive || !t || t === last) return;
+          last = t;
+          setEntries(es => {
+            if (es[0]?.text === t) return es;
+            const next = [{ id: Date.now(), text: t, at: Date.now() }, ...es.filter(e => e.text !== t)].slice(0, 20);
+            try { localStorage.setItem("lekuvo.clips", JSON.stringify(next)); } catch { /* private mode */ }
+            return next;
+          });
+        })
+        .catch(() => { /* clipboard unavailable */ });
+    };
+    tick();
+    const id = window.setInterval(tick, 1500);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  const copy = (e: ClipEntry) => {
+    writeText(e.text).catch(console.error);
+    setCopied(e.id);
     window.setTimeout(() => setCopied(null), 1100);
   };
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setOver(false);
-    const files = Array.from(e.dataTransfer.files).map((f, i) => ({ id: Date.now() + i, name: f.name }));
-    if (files.length) setShelf(s => [...files, ...s].slice(0, 12));
+
+  const ago = (at: number) => {
+    const m = Math.max(0, Math.round((Date.now() - at) / 60000));
+    return m < 1 ? "just now" : m < 60 ? `${m}m ago` : `${Math.round(m / 60)}h ago`;
   };
-  const KindIcon = (k: Clip["kind"]) => (k === "link" ? Link2 : k === "image" ? ImageIcon : FileText);
 
   return (
-    <div className="h-full grid grid-cols-2 gap-2.5">
-      <div className="min-h-0 flex flex-col bg-white/[0.06] border border-white/10 rounded-2xl p-2.5">
-        <p className="text-[10px] uppercase tracking-[0.18em] text-white/40 font-bold mb-1.5 px-0.5">Board · tap to copy</p>
-        <div className="flex-1 min-h-0 overflow-y-auto thin-scroll space-y-1.5 pr-0.5">
+    <div className="h-full min-h-0 flex flex-col bg-white/[0.06] border border-white/10 rounded-2xl p-2.5">
+      <div className="flex items-center justify-between mb-1.5 px-0.5">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-white/40 font-bold">Board · real clipboard · tap to copy</p>
+        {entries.length > 0 && (
+          <button onClick={() => { setEntries([]); try { localStorage.setItem("lekuvo.clips", "[]"); } catch { /* noop */ } }} className="text-[10px] font-bold bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded-full text-white/60 hover:text-white transition">
+            Clear
+          </button>
+        )}
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto thin-scroll space-y-1.5 pr-0.5">
+        {entries.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center text-white/35 text-center pt-10">
+            <Copy className="w-6 h-6 mb-1.5" />
+            <span className="text-[11px] leading-snug">Copy anything anywhere —<br />it lands on this board.</span>
+          </div>
+        ) : (
           <AnimatePresence initial={false}>
-            {clips.map(c => {
-              const Icon = KindIcon(c.kind);
+            {entries.map(e => {
+              const isLink = /^https?:\/\//i.test(e.text.trim());
+              const Icon = isLink ? Link2 : FileText;
               return (
                 <motion.button
-                  key={c.id}
+                  key={e.id}
                   layout
                   initial={{ opacity: 0, scale: 0.9, y: -8 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
-                  onClick={() => copy(c)}
+                  exit={{ opacity: 0, x: 20 }}
+                  onClick={() => copy(e)}
                   className="w-full text-left flex items-center gap-2 bg-white/[0.08] hover:bg-white/[0.16] rounded-xl px-2 py-1.5 transition"
                 >
-                  <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: c.hue ?? "rgba(255,255,255,0.12)" }}><Icon className="w-3.5 h-3.5" /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[11px] font-semibold truncate">{c.label}</span>
-                    <span className="block text-[9px] text-white/40">{copied === c.id ? "Copied ✓" : c.sub}</span>
+                  <span className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0" style={{ background: isLink ? "#7DD3FC22" : "rgba(255,255,255,0.12)" }}>
+                    <Icon className="w-3.5 h-3.5 text-white/80" />
                   </span>
-                  {copied === c.id ? <Check className="w-3.5 h-3.5 text-[#7DD3FC] pop-in" /> : <Copy className="w-3 h-3 text-white/30" />}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[11px] font-semibold truncate">{e.text}</span>
+                    <span className="block text-[9px] text-white/40">{copied === e.id ? "Copied ✓" : `${isLink ? "Link" : `${e.text.length} chars`} · ${ago(e.at)}`}</span>
+                  </span>
+                  {copied === e.id ? <Check className="w-3.5 h-3.5 text-[#7DD3FC] pop-in" /> : <Copy className="w-3 h-3 text-white/30" />}
                 </motion.button>
               );
             })}
           </AnimatePresence>
-        </div>
-      </div>
-
-      <div
-        onDragOver={e => { e.preventDefault(); setOver(true); }}
-        onDragLeave={() => setOver(false)}
-        onDrop={onDrop}
-        className={`min-h-0 flex flex-col rounded-2xl p-2.5 border-2 border-dashed transition ${over ? "bg-[#7DD3FC]/20 border-[#7DD3FC]" : "bg-white/[0.04] border-white/20"}`}
-      >
-        <div className="flex items-center justify-between mb-1.5 px-0.5">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-white/40 font-bold">Shelf · drop files</p>
-          <button onClick={() => setShelf(s => [{ id: Date.now(), name: ["invoice.pdf", "logo_final.svg", "notes.md", "demo.mp4"][s.length % 4] }, ...s].slice(0, 12))} className="text-[10px] font-bold bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded-full">+ sample</button>
-        </div>
-        {shelf.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-white/35 text-center">
-            <Layers className="w-6 h-6 mb-1.5" />
-            <span className="text-[11px] leading-snug">Drag files here from your desktop.<br />They wait, no folders needed.</span>
-          </div>
-        ) : (
-          <div className="flex-1 min-h-0 overflow-y-auto thin-scroll flex flex-wrap gap-1.5 content-start">
-            <AnimatePresence initial={false}>
-              {shelf.map(f => (
-                <motion.span key={f.id} layout initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.6, opacity: 0 }} className="flex items-center gap-1 bg-[#7DD3FC] text-[#1F2550] text-[10px] font-bold pl-2 pr-1 py-1 rounded-full max-w-full">
-                  <FileText className="w-3 h-3 shrink-0" /><span className="truncate max-w-[84px]">{f.name}</span>
-                  <button onClick={() => setShelf(s => s.filter(x => x.id !== f.id))} aria-label="Remove" className="w-4 h-4 rounded-full hover:bg-black/15 flex items-center justify-center"><X className="w-3 h-3" /></button>
-                </motion.span>
-              ))}
-            </AnimatePresence>
-          </div>
         )}
       </div>
     </div>

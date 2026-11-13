@@ -123,7 +123,7 @@ export default function SystemPanel() {
                 aria-label="Brightness"
                 className="chunky flex-1 min-w-0"
                 style={sliderStyle(brightDrag ?? sys.st.brightness ?? 50, "#A5B4FC")}
-                onPointerDown={() => setBrightDrag(brightDrag ?? sys.st.brightness ?? 50)}
+                onPointerDown={() => setBrightDrag(brightDrag ?? sys.st?.brightness ?? 50)}
                 onPointerUp={() => setBrightDrag(null)}
                 onPointerCancel={() => setBrightDrag(null)}
                 onChange={e => { const v = Number(e.target.value); setBrightDrag(v); sys.set({ brightness: v }); }}

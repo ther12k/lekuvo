@@ -1,24 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useMedia, useMixerApps } from "../../hooks/useMedia";
 import { useSysStatus } from "../../hooks/useSysStatus";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BatteryCharging, BatteryFull, BatteryLow, BatteryMedium, Bell, BellOff, Check, CheckSquare,
-  Crop, Download, Droplets, GripHorizontal, Mic, Moon, MousePointer2, Move, Pin, Search, Sparkles,
+  BatteryCharging, BatteryFull, BatteryLow, BatteryMedium, Bell, BellOff,
+  GripHorizontal, MousePointer2, Move, Pin,
   Volume2, VolumeX, Wifi, WifiOff, X,
 } from "lucide-react";
-import Lekuvo, { LekuvoMark } from "../Lekuvo";
+import Lekuvo from "../Lekuvo";
 import SystemPanel from "./SystemPanel";
 import type { LekuvoMood, SkinId } from "../Lekuvo";
 import { useNoise } from "../../hooks/useNoise";
 import { useTheme } from "../../theme";
 import type { NoiseKey } from "../../hooks/useNoise";
-import { BREAK_SECONDS, DICTATIONS, FOCUS_SECONDS, POSITIONS, TABS, TIPS, fmt } from "./data";
-import type { Clip, NoiseState, PosId, ShelfFile, Song, TabId, Todo } from "./data";
+import { BREAK_SECONDS, FOCUS_SECONDS, POSITIONS, TABS, TIPS, fmt } from "./data";
+import type { NoiseState, PosId, Song, TabId, Todo } from "./data";
 import { BoardPanel, FocusPanel, MirrorPanel, MixerPanel, MusicPanel, NoisePanel, TodoPanel } from "./panels";
 
 /* ───────── types ───────── */
@@ -43,15 +43,6 @@ function Eq({ color, active = true }: { color: string; active?: boolean }) {
       {[0, 1, 2, 3].map(i => (
         <span key={i} className={`w-[3px] h-full rounded-full ${active ? "wave-bar" : ""}`} style={{ background: color, animationDelay: `${i * 0.13}s`, animationDuration: `${0.6 + i * 0.1}s` }} />
       ))}
-    </div>
-  );
-}
-
-function Group({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div>
-      <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-navy/45 mb-2.5">{title}</p>
-      {children}
     </div>
   );
 }
@@ -126,28 +117,17 @@ export default function NotchOverlay() {
   useEffect(() => {
     try { localStorage.setItem("lekuvo.todos", JSON.stringify(todos)); } catch { /* private mode */ }
   }, [todos]);
-  const [clips, setClips] = useState<Clip[]>([
-    { id: 1, kind: "link", label: "https://lekuvo.app/changelog", sub: "Link · 2m ago" },
-    { id: 2, kind: "text", label: "Ship the pill on Friday", sub: "Text · 14m ago" },
-    { id: 3, kind: "image", label: "moodboard_v3.png", sub: "Image · 1h ago", hue: "#FF9EC4" },
-  ]);
-  const [shelf, setShelf] = useState<ShelfFile[]>([]);
   const [noise, setNoise] = useState<NoiseState>({
     rain: { on: false, vol: 55 }, forest: { on: false, vol: 50 }, waves: { on: false, vol: 50 }, kalimba: { on: false, vol: 45 },
     fire: { on: false, vol: 50 }, wind: { on: false, vol: 45 }, night: { on: false, vol: 45 }, deep: { on: false, vol: 40 },
   });
   const [water, setWater] = useState(3);
-  const [docText, setDocText] = useState("");
-  const [flash, setFlash] = useState(0);
-  const [thumb, setThumb] = useState(false);
   const [liveTick, setLiveTick] = useState(0);
 
   const engine = useNoise();
   const touched = useRef(false);
   const timers = useRef<number[]>([]);
   const leaveTimer = useRef<number | null>(null);
-  const docTimer = useRef<number | null>(null);
-  const shotCount = useRef(2041);
 
   const theme = useTheme();
   const skin: SkinId = theme as SkinId;
@@ -163,7 +143,6 @@ export default function NotchOverlay() {
   useEffect(() => () => {
     timers.current.forEach(id => window.clearTimeout(id));
     if (leaveTimer.current) window.clearTimeout(leaveTimer.current);
-    if (docTimer.current) window.clearInterval(docTimer.current);
   }, []);
 
   /* measure stage */
@@ -183,6 +162,11 @@ export default function NotchOverlay() {
 
   /* real music state derived from MPRIS */
   const playing = !!media.info?.playing;
+  const artSrc = (media.info?.artUrl ?? "").length > 0
+    ? media.info!.artUrl.startsWith("file://")
+      ? convertFileSrc(media.info!.artUrl.replace(/^file:\/\//, ""))
+      : media.info!.artUrl
+    : undefined;
   const song: Song = media.info
     ? {
         title: media.info.title || "Unknown track",
@@ -191,6 +175,7 @@ export default function NotchOverlay() {
         dur: Math.max(1, media.info.lengthSec),
         lyrics: ["♪", "♫", media.info.title || "…"],
         source: "MPRIS",
+        art: artSrc,
       }
     : { title: "Nothing playing", artist: "open your music player", colors: ["#9DB2FF", "#4C5FD7"], dur: 1, lyrics: ["♪"], source: "idle" };
   const t = Math.min(media.positionSec, song.dur);
@@ -252,37 +237,6 @@ export default function NotchOverlay() {
     clearTimers();
     setPinned(false);
     setToast(next);
-  };
-  const addClip = (c: Omit<Clip, "id">) => setClips(cs => [{ id: Date.now(), ...c }, ...cs].slice(0, 8));
-
-  const typeDoc = (text: string) => {
-    if (docTimer.current) window.clearInterval(docTimer.current);
-    let i = 0;
-    docTimer.current = window.setInterval(() => {
-      i += 2;
-      setDocText(text.slice(0, i));
-      if (i >= text.length && docTimer.current) {
-        window.clearInterval(docTimer.current);
-        docTimer.current = null;
-      }
-    }, 22);
-  };
-  const runDictation = () => {
-    fire({ kind: "dictate" });
-    schedule(() => {
-      const text = DICTATIONS[Math.floor(Math.random() * DICTATIONS.length)];
-      setToast({ kind: "pasted", words: text.split(" ").length });
-      typeDoc(text);
-      addClip({ kind: "text", label: text, sub: "Text · dictated just now" });
-    }, 3000);
-  };
-  const runShot = () => {
-    fire({ kind: "shot" });
-    shotCount.current += 1;
-    setFlash(f => f + 1);
-    setThumb(true);
-    addClip({ kind: "image", label: `screenshot_${shotCount.current}.png`, sub: "Image · just now", hue: "#C4B5FD" });
-    schedule(() => setThumb(false), 3000);
   };
   const runUpdate = () => {
     clearTimers();
@@ -391,8 +345,7 @@ export default function NotchOverlay() {
 
   const R = view === "idle" ? 22 : 30;
   const radius =
-    mode === "island" ? `${R}px ${R}px ${R}px ${R}px`
-    : p.edge === "top" ? `0px 0px ${R}px ${R}px`
+    p.edge === "top" ? `0px 0px ${R}px ${R}px`
     : p.edge === "bottom" ? `${R}px ${R}px 0px 0px`
     : p.edge === "left" ? `0px ${R}px ${R}px 0px`
     : `${R}px 0px 0px ${R}px`;
@@ -416,16 +369,6 @@ export default function NotchOverlay() {
     setToast(null);
     if (!canHover()) setPinned(true);
   };
-
-  const pokes = [
-    { label: "Water", icon: Droplets, run: () => fire({ kind: "water" }) },
-    { label: "To-do due", icon: CheckSquare, run: () => fire({ kind: "todo", text: todos.find(i => !i.done)?.text ?? "Reply to Sarah" }) },
-    { label: "Prayer time", icon: Moon, run: () => fire({ kind: "prayer" }) },
-    { label: "Stretch", icon: Activity, run: () => fire({ kind: "stretch" }) },
-    { label: "Update pill", icon: Download, run: () => fire({ kind: "update" }) },
-    { label: "Dictate · Lekutalk", icon: Mic, run: runDictation },
-    { label: "Snap · Lekusnap", icon: Crop, run: runShot },
-  ];
 
 
   /* ───────── render ───────── */
@@ -639,7 +582,7 @@ export default function NotchOverlay() {
                           />
                         )}
                         {tab === "todo" && <TodoPanel todos={todos} setTodos={setTodos} onNudge={text => fire({ kind: "todo", text })} />}
-                        {tab === "board" && <BoardPanel clips={clips} shelf={shelf} setShelf={setShelf} />}
+                        {tab === "board" && <BoardPanel />}
                         {tab === "mixer" && <MixerPanel apps={mixer.apps} onVol={mixer.setVol} onMute={mixer.setMute} />}
                         {tab === "noise" && <NoisePanel noise={noise} onToggle={toggleNoise} onVol={volNoise} />}
                         {tab === "mirror" && <MirrorPanel />}
@@ -775,23 +718,6 @@ export default function NotchOverlay() {
       )}
     </AnimatePresence>
 
-    {/* screenshot flash + snip thumbnail */}
-    {flash > 0 && <div key={flash} className="absolute inset-0 bg-white anim-flash pointer-events-none z-30" />}
-    <AnimatePresence>
-      {thumb && (
-        <motion.div
-          initial={{ x: 150, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 150, opacity: 0 }}
-          transition={{ type: "spring", stiffness: 260, damping: 24 }}
-          className="absolute right-3 bottom-[56px] z-10 w-[160px] bg-notch/95 backdrop-blur rounded-2xl p-2 text-white shadow-2xl"
-        >
-          <div className="relative h-[62px] rounded-xl overflow-hidden bg-gradient-to-br from-royal via-peri to-butter">
-            <div className="absolute inset-2 border-2 border-dashed border-white/85 rounded" />
-            <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 60"><path d="M14 40 Q30 14 48 36 T86 22" stroke="#fff" strokeWidth="3" fill="none" strokeLinecap="round" /></svg>
-          </div>
-          <p className="text-[10.5px] font-bold mt-1.5 flex items-center gap-1"><Check className="w-3 h-3 text-butter" /> Copied to clipboard</p>
-        </motion.div>
-      )}
-    </AnimatePresence>
     </div>
   );
 }

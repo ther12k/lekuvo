@@ -35,6 +35,8 @@ export interface Song {
   dur: number;
   colors: [string, string];
   lyrics: string[];
+  /** real cover art (converted file:// or https URL); vinyl gradient when absent */
+  art?: string;
 }
 
 export const SONGS: Song[] = [

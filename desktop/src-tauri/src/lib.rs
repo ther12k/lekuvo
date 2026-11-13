@@ -120,6 +120,38 @@ fn place_zone(window: &tauri::WebviewWindow, zone: &str, wa: Workarea) {
 #[derive(Default)]
 struct DragWatch(Mutex<Option<std::time::Instant>>);
 
+fn zone_file() -> std::path::PathBuf {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            let home = std::env::var_os("HOME").unwrap_or_default();
+            std::path::PathBuf::from(home).join(".config")
+        });
+    base.join("lekuvo-desktop").join("zone")
+}
+
+fn save_zone(zone: &str) {
+    if let Some(dir) = zone_file().parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(zone_file(), zone);
+}
+
+fn load_zone() -> Option<&'static str> {
+    let z = std::fs::read_to_string(zone_file()).ok()?;
+    match z.trim() {
+        "tl" => Some("tl"),
+        "t" => Some("t"),
+        "tr" => Some("tr"),
+        "l" => Some("l"),
+        "r" => Some("r"),
+        "bl" => Some("bl"),
+        "b" => Some("b"),
+        "br" => Some("br"),
+        _ => None,
+    }
+}
+
 /// After a drag ends (window stops moving for ~280ms), snap to the nearest
 /// zone and tell the frontend which zone it now lives in.
 fn spawn_snap_watcher(app: AppHandle) {
@@ -144,6 +176,7 @@ fn spawn_snap_watcher(app: AppHandle) {
         let Some(wa) = read_workarea() else { continue };
         let zone = zone_for(pos.x, pos.y, size.width as i32, size.height as i32, wa);
         place_zone(&win, zone, wa);
+        save_zone(zone);
         let _ = app.emit("zone-changed", zone);
     });
 }
@@ -650,6 +683,7 @@ fn bt_device(mac: String, connect: bool) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(OverlayState::default())
         .manage(DragWatch::default())
         .invoke_handler(tauri::generate_handler![
@@ -668,10 +702,12 @@ pub fn run() {
         ])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                // top-center, below the system bar, inside the workarea
+                // restore the last zone (or top-center), below the system
+                // bar, inside the workarea
+                let zone = load_zone().unwrap_or("t");
                 let wa = read_workarea();
                 if let Some(wa) = wa {
-                    place_zone(&window, "t", wa);
+                    place_zone(&window, zone, wa);
                 } else {
                     let Ok(Some(monitor)) = window.current_monitor() else {
                         return Ok(());
