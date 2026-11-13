@@ -5,6 +5,9 @@ import {
   Lock, Moon, Sun, Wifi, WifiOff,
 } from "lucide-react";
 import { useSysStatus } from "../../hooks/useSysStatus";
+import Lekuvo from "../Lekuvo";
+import type { SkinId } from "../Lekuvo";
+import { useTheme } from "../../theme";
 
 interface WifiNet { ssid: string; signal: number; secure: boolean; connected: boolean }
 interface BtDev { mac: string; name: string; connected: boolean }
@@ -69,6 +72,8 @@ function MiniCalendar() {
 
 export default function SystemPanel() {
   const sys = useSysStatus();
+  const theme = useTheme();
+  const skin = theme as SkinId;
   const [net, setNet] = useState<NetStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null); // ssid awaiting a password
@@ -95,6 +100,23 @@ export default function SystemPanel() {
 
   const chip = (on: boolean) =>
     `w-8 h-8 rounded-full flex items-center justify-center transition ${on ? "bg-[#A5B4FC] text-navy" : "bg-white/10 text-white/60 hover:bg-white/20 hover:text-white"}`;
+
+  // first scan: Wi-Fi list + per-device bluetooth info can take a beat —
+  // show Lekuvo instead of an empty, stuck-looking panel
+  if (!net) {
+    return (
+      <div className="h-full grid grid-cols-[1fr_188px] gap-3 min-h-0">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-2xl bg-white/[0.04] border border-white/10">
+          <span className="relative">
+            <Lekuvo size={56} mood="sleep" skin={skin} shadow={false} dark />
+            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-notch bg-[#A5B4FC] border-t-transparent animate-spin" />
+          </span>
+          <p className="text-xs font-bold text-white/50 animate-pulse">Scanning your system…</p>
+        </div>
+        <MiniCalendar />
+      </div>
+    );
+  }
 
   return (
     <div className="h-full grid grid-cols-[1fr_188px] gap-3 min-h-0">

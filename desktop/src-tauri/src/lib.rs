@@ -634,11 +634,12 @@ fn net_status() -> NetStatus {
                     .collect()
             })
             .unwrap_or_default();
-        for d in devices.iter_mut() {
+        for d in devices.iter_mut().take(6) {
             d.connected = run_cmd("bluetoothctl", &["info", &d.mac])
                 .map(|s| s.contains("Connected: yes"))
                 .unwrap_or(false);
         }
+        devices.truncate(6);
         devices.sort_by_key(|d| !d.connected);
         st.devices = devices;
     }
