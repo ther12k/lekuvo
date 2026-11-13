@@ -3,8 +3,8 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Activity, BatteryFull, Check, CheckSquare, Crop, Download, Droplets, Mic, Moon,
-  MousePointer2, Pin, Search, Sparkles, Volume2, Wifi, X,
+  Activity, BatteryFull, Check, CheckSquare, Crop, Download, Droplets, GripHorizontal, Mic, Moon,
+  MousePointer2, Move, Pin, Search, Sparkles, Volume2, Wifi, X,
 } from "lucide-react";
 import Lekuvo, { LekuvoMark } from "../Lekuvo";
 import type { LekuvoMood, SkinId } from "../Lekuvo";
@@ -80,10 +80,17 @@ export default function NotchOverlay() {
     if (!d?.armed) return;
     if (Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) {
       d.armed = false;
-      getCurrentWindow().startDragging().catch(() => {});
+      getCurrentWindow().startDragging().catch(err => console.error("lekuvo: startDragging failed:", err));
     }
   };
   const onDragEnd = () => { drag.current = null; };
+  /* dedicated grip: grabs the window immediately, no movement threshold */
+  const onHandleDown = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    getCurrentWindow().startDragging().catch(err => console.error("lekuvo: startDragging failed:", err));
+  };
 
   // music
   const [songIdx, setSongIdx] = useState(0);
@@ -474,6 +481,15 @@ export default function NotchOverlay() {
                       </div>
                     )}
                   </div>
+                  <button
+                    onPointerDown={onHandleDown}
+                    onClick={e => e.stopPropagation()}
+                    aria-label="Move Lekuvo"
+                    title="Drag to move"
+                    className="w-7 h-7 -mr-1 rounded-full flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing text-white/35 hover:text-white/85 hover:bg-white/10 transition"
+                  >
+                    <GripHorizontal className="w-4 h-4" />
+                  </button>
                 </div>
               )}
 
@@ -533,6 +549,14 @@ export default function NotchOverlay() {
                         );
                       })}
                     </div>
+                    <button
+                      onPointerDown={onHandleDown}
+                      aria-label="Move Lekuvo"
+                      title="Drag to move"
+                      className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing bg-white/10 text-white/60 hover:text-white hover:bg-white/20 transition"
+                    >
+                      <Move className="w-3.5 h-3.5" />
+                    </button>
                     <button
                       onClick={() => { touched.current = true; setPinned(v => !v); }}
                       aria-label={pinned ? "Close" : "Pin open"}
