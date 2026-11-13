@@ -10,6 +10,7 @@ export interface SysStatus {
   dnd: boolean;
   brightness: number | null;
   dark: boolean;
+  clock24: boolean;
 }
 
 /** Real system status: default-sink volume, wifi link, battery, DND. */

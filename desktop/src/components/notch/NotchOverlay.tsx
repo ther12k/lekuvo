@@ -360,7 +360,12 @@ export default function NotchOverlay() {
   const perch = p.ay === 1; // notch at the bottom → Lekuvo sits on top instead of hanging below
   const d = toast ? describe(toast) : null;
   const activeTab = TABS.find(x => x.id === tab) ?? TABS[0];
-  const time = clock.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  // match the GNOME clock: 24h vs AM/PM, same timezone as the system
+  const time = clock.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    ...(sys.st?.clock24 ? { hour12: false } : {}),
+  });
   const contentKey = view === "toast" && toast ? `toast-${toast.kind}` : view === "idle" ? `idle-${live}` : view;
   const focusTotal = focusMode === "focus" ? FOCUS_SECONDS : BREAK_SECONDS;
 

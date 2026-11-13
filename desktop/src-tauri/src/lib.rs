@@ -364,6 +364,7 @@ struct SysStatus {
     dnd: bool,
     brightness: Option<u32>,
     dark: bool,
+    clock24: bool,
 }
 
 fn run_cmd(cmd: &str, args: &[&str]) -> Option<String> {
@@ -445,6 +446,12 @@ fn sys_status() -> SysStatus {
     )
     .map(|s| s.contains("prefer-dark"))
     .unwrap_or(false);
+    let clock24 = run_cmd(
+        "gsettings",
+        &["get", "org.gnome.desktop.interface", "clock-format"],
+    )
+    .map(|s| s.trim().contains("24h"))
+    .unwrap_or(false);
     SysStatus {
         vol,
         mute,
@@ -454,6 +461,7 @@ fn sys_status() -> SysStatus {
         dnd,
         brightness,
         dark,
+        clock24,
     }
 }
 
