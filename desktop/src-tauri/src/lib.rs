@@ -81,6 +81,76 @@ fn read_workarea() -> Option<Workarea> {
 #[derive(Default)]
 struct DragWatch(Mutex<Option<std::time::Instant>>);
 
+/* ───────────────────────── Rust-driven drag ─────────────────────────
+   The WM's move loop refuses to cross the GNOME top bar, and JS pointer
+   events stop the moment the cursor is over the shell panel (the panel is
+   stacked above us and takes the input). So the drag runs here, tracking
+   the GLOBAL cursor via XQueryPointer — which works no matter what window
+   is under the pointer — and ends when button 1 is physically released. */
+
+#[derive(Clone, Copy)]
+struct DragSession {
+    start_cursor: (f64, f64),
+    start_win: (i32, i32),
+}
+
+#[derive(Default)]
+struct DragState(Mutex<Option<DragSession>>);
+
+#[tauri::command]
+fn drag_begin(state: State<'_, DragState>, window: tauri::WebviewWindow) -> Result<(), String> {
+    let cursor = window.app_handle().cursor_position().map_err(|e| e.to_string())?;
+    let pos = window.outer_position().map_err(|e| e.to_string())?;
+    *state.0.lock().unwrap() = Some(DragSession {
+        start_cursor: (cursor.x, cursor.y),
+        start_win: (pos.x, pos.y),
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn drag_end(state: State<'_, DragState>) {
+    *state.0.lock().unwrap() = None;
+}
+
+fn spawn_drag_engine(app: AppHandle) {
+    use x11rb::connection::Connection;
+    use x11rb::protocol::xproto::ConnectionExt;
+
+    std::thread::spawn(move || {
+        let conn = match x11rb::rust_connection::RustConnection::connect(None) {
+            Ok((c, _)) => c,
+            Err(_) => return,
+        };
+        let root = conn.setup().roots[0].root;
+        loop {
+            std::thread::sleep(Duration::from_millis(16));
+            let session = *app.state::<DragState>().0.lock().unwrap();
+            let Some(s) = session else { continue };
+            let Some(win) = app.get_webview_window("main") else { continue };
+            if let Ok(cursor) = app.cursor_position() {
+                let nx = s.start_win.0 + (cursor.x - s.start_cursor.0).round() as i32;
+                let ny = s.start_win.1 + (cursor.y - s.start_cursor.1).round() as i32;
+                let _ = win.set_position(tauri::PhysicalPosition::new(nx, ny));
+            }
+            // auto-end when the button is physically released, wherever the
+            // pointer is (even over the shell panel)
+            let pressed = conn
+                .query_pointer(root)
+                .ok()
+                .and_then(|c| c.reply().ok())
+                .map(|r| {
+                    r.mask
+                        .contains(x11rb::protocol::xproto::KeyButMask::BUTTON1)
+                })
+                .unwrap_or(false);
+            if !pressed {
+                *app.state::<DragState>().0.lock().unwrap() = None;
+            }
+        }
+    });
+}
+
 fn pos_file() -> std::path::PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
@@ -150,8 +220,10 @@ fn spawn_hit_tester(app: AppHandle) {
             let y0 = win_pos.y as f64 + rect.y * scale;
             let x1 = x0 + rect.w * scale;
             let y1 = y0 + rect.h * scale;
-            let inside =
-                cursor.x >= x0 && cursor.x <= x1 && cursor.y >= y0 && cursor.y <= y1;
+            // during a Rust-driven drag the window must stay interactive
+            let dragging = app.state::<DragState>().0.lock().unwrap().is_some();
+            let inside = dragging
+                || (cursor.x >= x0 && cursor.x <= x1 && cursor.y >= y0 && cursor.y <= y1);
             let pass_through = !inside;
             if last_pass_through != Some(pass_through) {
                 if win.set_ignore_cursor_events(pass_through).is_ok() {
@@ -693,8 +765,11 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(OverlayState::default())
         .manage(DragWatch::default())
+        .manage(DragState::default())
         .invoke_handler(tauri::generate_handler![
             set_hit_rect,
+            drag_begin,
+            drag_end,
             media_state,
             media_control,
             mixer_state,
@@ -747,6 +822,7 @@ pub fn run() {
             spawn_hit_tester(app.handle().clone());
             spawn_media(app.handle().clone());
             spawn_placement_watcher(app.handle().clone());
+            spawn_drag_engine(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())

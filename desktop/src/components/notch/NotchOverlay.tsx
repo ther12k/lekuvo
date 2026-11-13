@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { PhysicalPosition } from "@tauri-apps/api/dpi";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useMedia, useMixerApps } from "../../hooks/useMedia";
 import { useSysStatus } from "../../hooks/useSysStatus";
@@ -64,71 +62,35 @@ export default function NotchOverlay() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [clock, setClock] = useState(() => new Date());
 
-  /* window dragging: manual setPosition() drag. The WM's move loop
-     (startDragging) refuses to move windows above the GNOME top bar, so
-     we bypass it entirely — no boundary anywhere. A 5px threshold keeps
-     plain clicks (open/pin) landing, and interactive controls are
-     excluded from surface drags. */
-  const drag = useRef<{
-    sx: number; sy: number;             // pointer screen origin once active
-    ax: number; ay: number;             // pointer client origin while armed
-    armed: boolean;                     // threshold not yet crossed
-    base: { x: number; y: number; scale: number } | null; // window pos (physical)
-  } | null>(null);
-
-  const captureBase = () => {
-    void (async () => {
-      try {
-        const win = getCurrentWindow();
-        const scale = await win.scaleFactor();
-        const p = await win.outerPosition();
-        if (drag.current && !drag.current.armed) drag.current.base = { x: p.x, y: p.y, scale };
-      } catch (err) {
-        console.error("lekuvo: drag base failed:", err);
-      }
-    })();
-  };
-
-  const dragMove = (e: ReactPointerEvent) => {
-    const d = drag.current;
-    if (!d || d.armed) return;
-    const b = d.base;
-    if (!b) return; // base not resolved yet — drop frames until it is
-    const dx = (e.screenX - d.sx) * b.scale;
-    const dy = (e.screenY - d.sy) * b.scale;
-    void getCurrentWindow().setPosition(new PhysicalPosition(b.x + dx, b.y + dy));
-  };
+  /* window dragging: the Rust drag engine tracks the GLOBAL cursor
+     (XQueryPointer), so the drag works even when the pointer is over the
+     GNOME top bar — no boundary anywhere. The webview only starts/ends
+     it; a 5px threshold keeps plain clicks landing on the surface. */
+  const dragArm = useRef<{ x: number; y: number } | null>(null);
 
   const onDragDown = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest("button, input, textarea, a, [role='slider']")) return;
-    drag.current = { sx: 0, sy: 0, ax: e.clientX, ay: e.clientY, armed: true, base: null };
+    dragArm.current = { x: e.clientX, y: e.clientY };
   };
   const onDragMove = (e: ReactPointerEvent) => {
-    const d = drag.current;
-    if (!d) return;
-    if (d.armed) {
-      if (Math.hypot(e.clientX - d.ax, e.clientY - d.ay) > 5) {
-        d.armed = false;
-        d.sx = e.screenX;
-        d.sy = e.screenY;
-        // keep receiving moves even if the pointer briefly outruns us
-        try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* gone */ }
-        captureBase();
-      }
-      return;
+    const arm = dragArm.current;
+    if (!arm) return;
+    if (Math.hypot(e.clientX - arm.x, e.clientY - arm.y) > 5) {
+      dragArm.current = null;
+      void invoke("drag_begin").catch(console.error);
     }
-    dragMove(e);
   };
-  const onDragEnd = () => { drag.current = null; };
+  const onDragEnd = () => {
+    dragArm.current = null;
+    void invoke("drag_end").catch(console.error);
+  };
   /* dedicated grip: grabs the window immediately, no movement threshold */
   const onHandleDown = (e: ReactPointerEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    drag.current = { sx: e.screenX, sy: e.screenY, ax: e.clientX, ay: e.clientY, armed: false, base: null };
-    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* gone */ }
-    captureBase();
+    void invoke("drag_begin").catch(console.error);
   };
 
   // media + mixer + system status: real system state
