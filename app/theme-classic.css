@@ -23,9 +23,6 @@
 .lk-vinyl { background-color: #4C5FD7; }
 .lk-eqbar { background-color: #8EA7F7; }
 
-/* Song glow + vinyl center ring follow the periwinkle accent. */
-.lk-artglow  { box-shadow: 0 14px 34px -10px #8EA7F766; }
-.lk-vinyl-dot { border: 3px solid #8EA7F7; }
 
 /* Card corner wash: the constant alpha tints in 01-notch.css blend
    over this theme's notch navy, so no per-theme overrides here. */

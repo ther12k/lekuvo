@@ -22,9 +22,6 @@
 .lk-vinyl { background-color: #E85A55; }
 .lk-eqbar { background-color: #FFB09E; }
 
-/* Song glow + vinyl center ring follow the accent. */
-.lk-artglow  { box-shadow: 0 14px 34px -10px #FFB09E66; }
-.lk-vinyl-dot { border: 3px solid #FFB09E; }
 
 /* Card corner wash: the constant alpha tints in 01-notch.css
    blend over this theme's notch navy, so no per-theme overrides here. */

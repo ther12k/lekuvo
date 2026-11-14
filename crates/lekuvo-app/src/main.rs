@@ -882,21 +882,22 @@ fn run_headless_snapshots(
             ("playing".to_owned(), ReactiveValue::Bool(true)),
             ("title".to_owned(), ReactiveValue::String("Neon Bubblegum".to_owned())),
             ("artist".to_owned(), ReactiveValue::String("Lola Waves".to_owned())),
-            ("pos".to_owned(), ReactiveValue::String("1:12".to_owned())),
-            ("left".to_owned(), ReactiveValue::String("-2:40".to_owned())),
-            ("pct".to_owned(), ReactiveValue::Number(37.0)),
+            ("pos".to_owned(), ReactiveValue::String("02:37".to_owned())),
+            ("left".to_owned(), ReactiveValue::String("-0:35".to_owned())),
+            ("pct".to_owned(), ReactiveValue::Number(82.0)),
             ("dur".to_owned(), ReactiveValue::Number(192_000_000.0)),
         ]),
     );
-    // Lyric window around t=72s of the reference demo song (develop
-    // SONGS[0]: abs = t/4 = 18, so lines 16..20 wrap to the six-line
-    // array with the current line at index 18 % 6 = 0).
+    // Lyric window at t=157s (02:37) of the reference demo song — the
+    // exact state the reference capture shows (develop SONGS[0]: abs =
+    // t/4 = 39, so slots 0..4 carry lyrics[37..41] % 6 with the current
+    // line centered at slot 2, matching the develop five-line window).
     let lyric_lines = [
-        ("Pink lights on the avenue", true),
         ("Bubblegum skies, I'm chasing you", false),
         ("Windows down, volume loud", false),
-        ("Dancing on a neon cloud", false),
+        ("Dancing on a neon cloud", true),
         ("Say my name like a melody", false),
+        ("Stay a little, stay with me", false),
     ];
     let _ = view.write_state("lyrics.has", ReactiveValue::Bool(true));
     for (slot, (text, current)) in lyric_lines.iter().enumerate() {

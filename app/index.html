@@ -352,29 +352,37 @@
               </div>
               <div
                 vx-show="!hasArt"
-                :class="media.playing ? 'lk-vinyl lk-artglow animate-spin shrink-0' : 'lk-vinyl lk-artglow shrink-0'"
-                style="width:104px;height:104px;border-radius:999px;display:flex;flex-direction:column;align-items:center;padding-top:14px"
+                class="lk-artglow shrink-0 overflow-hidden"
+                style="width:104px;height:104px;border-radius:26px;background-image:linear-gradient(135deg,#FF9EC4,#7C6CF2)"
               >
-                <div style="width:7px;height:7px;border-radius:999px;background-color:#F2F4FFB3"></div>
-                <div class="lk-vinyl-ring" style="width:60px;height:60px;border-radius:999px;border:6px solid #FFFFFF2E;display:flex;align-items:center;justify-content:center;margin-top:8px">
-                  <div style="width:30px;height:30px;border-radius:999px;background-color:#10131F;display:flex;align-items:center;justify-content:center">
-                    <div class="lk-vinyl-dot" style="width:16px;height:16px;border-radius:999px;background-color:#F2F4FFEB"></div>
+                <div class="rounded-full" style="width:80px;height:80px;margin-left:44px;margin-top:-20px;background-color:#FFFFFF40"></div>
+                <div class="rounded-full" style="width:96px;height:96px;margin-left:-24px;margin-top:-28px;border:10px solid #FFFFFF33"></div>
+                <div class="rounded-full flex items-center justify-center" style="width:48px;height:48px;margin-left:28px;margin-top:-100px;background-color:#000000CC">
+                  <!-- the develop dot carries borderRight: 4px solid c0;
+                       per-side borders are outside the renderer profile,
+                       so the segment is a pink backing circle with the
+                       white label offset left by the same 4px -->
+                  <div class="rounded-full flex items-center" style="width:16px;height:16px;background-color:#FF9EC4">
+                    <div class="rounded-full" style="width:12px;height:12px;background-color:#FFFFFFE6"></div>
                   </div>
+                </div>
+                <div class="flex" style="margin-top:3px;padding-left:6px">
+                  <div class="font-bold text-white" style="font-size:9px;background-color:#0000008C;padding:2px 6px;border-radius:999px">Spotify</div>
                 </div>
               </div>
               <div class="flex items-end gap-[3px]" style="height:14px">
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar lk-song' : 'lk-eqbar opacity-40 lk-song'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar lk-song' : 'lk-eqbar opacity-40 lk-song'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar lk-song' : 'lk-eqbar opacity-40 lk-song'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar lk-song' : 'lk-eqbar opacity-40 lk-song'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar lk-song' : 'lk-eqbar opacity-40 lk-song'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar lk-song' : 'lk-eqbar opacity-40 lk-song'" style="width:3px;height:14px;border-radius:999px"></div>
               </div>
             </div>
             <div class="flex-1 min-w-0 flex flex-col">
               <p vx-text="media.title" class="lk-display font-bold text-[17px] leading-tight truncate"></p>
               <p vx-text="hasMedia ? media.artist : 'open your music player'" class="text-xs text-white/50 truncate"></p>
-              <div class="flex-1 min-h-0 overflow-hidden flex flex-col justify-center gap-1.5" style="margin-top:6px">
+              <div class="overflow-hidden flex flex-col justify-center gap-1.5" style="margin-top:8px;height:149px">
                 <p
                   vx-show="lyrics.l0 !== ''"
                   vx-text="lyrics.l0"
@@ -406,30 +414,33 @@
                 </p>
               </div>
               <div vx-show="media.dur > 0" class="flex flex-col" style="margin-top:auto">
-                <div class="h-2 rounded-full bg-white/12 overflow-hidden flex gap-0.5">
-                  <button id="seek-0" :class="media.pct >= 5 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-1" :class="media.pct >= 15 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-2" :class="media.pct >= 25 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-3" :class="media.pct >= 35 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-4" :class="media.pct >= 45 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-5" :class="media.pct >= 55 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-6" :class="media.pct >= 65 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-7" :class="media.pct >= 75 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-8" :class="media.pct >= 85 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
-                  <button id="seek-9" :class="media.pct >= 95 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                <div class="h-2 rounded-full bg-white/12 overflow-hidden flex">
+                  <button id="seek-0" :class="media.pct >= 5 ? 'flex-1 lk-seek-0' : 'flex-1'"></button>
+                  <button id="seek-1" :class="media.pct >= 15 ? 'flex-1 lk-seek-1' : 'flex-1'"></button>
+                  <button id="seek-2" :class="media.pct >= 25 ? 'flex-1 lk-seek-2' : 'flex-1'"></button>
+                  <button id="seek-3" :class="media.pct >= 35 ? 'flex-1 lk-seek-3' : 'flex-1'"></button>
+                  <button id="seek-4" :class="media.pct >= 45 ? 'flex-1 lk-seek-4' : 'flex-1'"></button>
+                  <button id="seek-5" :class="media.pct >= 55 ? 'flex-1 lk-seek-5' : 'flex-1'"></button>
+                  <button id="seek-6" :class="media.pct >= 65 ? 'flex-1 lk-seek-6' : 'flex-1'"></button>
+                  <button id="seek-7" :class="media.pct >= 75 ? 'flex-1 lk-seek-7' : 'flex-1'"></button>
+                  <button id="seek-8" :class="media.pct >= 85 ? 'flex-1 lk-seek-8' : 'flex-1'"></button>
+                  <button id="seek-9" :class="media.pct >= 95 ? 'flex-1 lk-seek-9' : 'flex-1'"></button>
                 </div>
                 <div class="flex justify-between lk-tabular text-[10px] text-white/40 mt-1">
                   <div vx-text="media.pos"></div>
                   <div vx-text="media.left"></div>
                 </div>
               </div>
-              <div id="transport" data-vv-test="transport" class="flex items-center justify-center gap-3 mt-1">
+              <div id="transport" data-vv-test="transport" class="flex items-center justify-center gap-3 mt-0.5">
                 <button id="btn-prev" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center">
                   <img src="icons/prev.png" alt="Previous" style="width:16px;height:16px" />
                 </button>
-                <button id="btn-play" class="lk-btn-accent w-11 h-11 rounded-full flex items-center justify-center">
+                <button id="btn-play" class="lk-song w-11 h-11 rounded-full flex items-center justify-center">
                   <img vx-show="!media.playing" src="icons/play.png" alt="Play" style="width:20px;height:20px" />
-                  <img vx-show="media.playing" src="icons/pause.png" alt="Pause" style="width:20px;height:20px" />
+                  <span vx-show="media.playing" class="flex items-center" style="gap:3.5px">
+                    <span class="rounded-[1px]" style="width:3.5px;height:14px;background-color:#1F2550"></span>
+                    <span class="rounded-[1px]" style="width:3.5px;height:14px;background-color:#1F2550"></span>
+                  </span>
                 </button>
                 <button id="btn-next" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center">
                   <img src="icons/next.png" alt="Next" style="width:16px;height:16px" />
@@ -1005,18 +1016,16 @@
           </div>
         </div>
 
-        <!-- footer: Lekuvo's corner — mascot slot, tip per tab, status cluster.
-             The reference hangs him below the card with absolute positioning,
-             which the renderer's layout engine does not implement, so he
-             stands in the footer's left corner (the reference reserves
-             exactly this slot via its footer padding). -->
-        <div class="h-px bg-white/10 shrink-0"></div>
-        <div class="h-[48px] shrink-0 flex items-center gap-2 pr-3" style="padding-left:16px">
-          <div
-            id="mascot-full"
-            data-vv-test="mascot-full"
-            class="w-[44px] h-[44px] shrink-0"
-          ></div>
+        <!-- footer: Lekuvo's corner (develop NotchOverlay.tsx). He hangs
+             OUTSIDE below-left of the card there (absolute, HANG_W=94),
+             which this renderer's layout engine cannot express — the
+             footer carries no inline sprite; the reference reserves the
+             slot via its footer padding (HANG_W + 34 top-flush, 16
+             perched). -->
+        <div
+          class="h-[48px] shrink-0 border-t border-white/10 flex items-center gap-2 pr-3"
+          :style="'padding-left:' + (zone === 'bl' || zone === 'bc' || zone === 'br' ? 16 : 128) + 'px'"
+        >
           <p vx-show="tab === 'music'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Lyrics scroll on their own, thanks to LRCLIB.</p>
           <p vx-show="tab === 'focus'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Collapse me and the timer stays in the pill.</p>
           <p vx-show="tab === 'todo'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Give a task a time and I'll poke you.</p>
@@ -1028,36 +1037,51 @@
           <p vx-show="tab === 'ai'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Your AI quotas, straight from aiacctool.</p>
           <p vx-show="tab === 'home'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Lights and plugs, room by room — Home Assistant ready.</p>
 
-          <div class="flex items-center gap-2 shrink-0">
-            <div id="clock" data-vv-test="clock" vx-text="clock" class="lk-display lk-tabular text-[11px] font-extrabold text-white/80"></div>
+          <div class="ml-auto flex items-center gap-1 shrink-0">
             <button
               id="theme-classic"
               title="Classic"
-              :class="theme === 'classic' ? 'sw-classic w-5 h-5 rounded-full border-2 lk-sel' : 'sw-classic w-5 h-5 rounded-full border-2 lk-unsel'"
+              :class="theme === 'classic' ? 'sw-classic w-3.5 h-3.5 rounded-full border-2 lk-sel' : 'sw-classic w-3.5 h-3.5 rounded-full border-2 lk-unsel'"
             ></button>
             <button
               id="theme-meadow"
               title="Meadow"
-              :class="theme === 'meadow' ? 'sw-meadow w-5 h-5 rounded-full border-2 lk-sel' : 'sw-meadow w-5 h-5 rounded-full border-2 lk-unsel'"
+              :class="theme === 'meadow' ? 'sw-meadow w-3.5 h-3.5 rounded-full border-2 lk-sel' : 'sw-meadow w-3.5 h-3.5 rounded-full border-2 lk-unsel'"
             ></button>
             <button
               id="theme-sunset"
               title="Sunset"
-              :class="theme === 'sunset' ? 'sw-sunset w-5 h-5 rounded-full border-2 lk-sel' : 'sw-sunset w-5 h-5 rounded-full border-2 lk-unsel'"
+              :class="theme === 'sunset' ? 'sw-sunset w-3.5 h-3.5 rounded-full border-2 lk-sel' : 'sw-sunset w-3.5 h-3.5 rounded-full border-2 lk-unsel'"
             ></button>
             <button
               id="theme-dusk"
               title="Dusk"
-              :class="theme === 'dusk' ? 'sw-dusk w-5 h-5 rounded-full border-2 lk-sel' : 'sw-dusk w-5 h-5 rounded-full border-2 lk-unsel'"
+              :class="theme === 'dusk' ? 'sw-dusk w-3.5 h-3.5 rounded-full border-2 lk-sel' : 'sw-dusk w-3.5 h-3.5 rounded-full border-2 lk-unsel'"
             ></button>
+            <div id="clock" data-vv-test="clock" vx-text="clock" class="lk-tabular text-[11px] font-extrabold text-white/80 ml-0.5"></div>
             <button
               id="btn-exit"
-              :class="exit.armed ? 'text-[11px] font-extrabold px-3 py-1.5 rounded-full transition active:opacity-80 lk-warm lk-ink' : 'text-[11px] font-extrabold px-3 py-1.5 rounded-full transition active:opacity-80 lk-btn text-white/70'"
+              :class="exit.armed ? 'text-[11px] font-extrabold px-2.5 py-1 rounded-full transition active:opacity-80 lk-warm lk-ink' : 'text-[11px] font-extrabold px-2.5 py-1 rounded-full transition active:opacity-80 lk-btn text-white/70'"
               vx-text="exit.armed ? 'Really quit?' : 'Exit'"
             ></button>
           </div>
         </div>
       </div>
+
+      <!-- hanging Lekuvo (develop NotchOverlay.tsx: absolute left 22, top
+           calc(100% - HANG_W*100/160), size HANG_W=94 — he overlaps the
+           card's bottom-left corner and dangles below it, which is why
+           the footer reserves HANG_W+34 of left padding). The renderer
+           has no out-of-flow positioning, so he hangs from the root
+           column right after the card: 94px wide at the card's left+22,
+           pulled up 58px so only his lower half dangles below the card.
+           Top zones only; the perch variant is future work. -->
+      <div
+        id="mascot-full"
+        data-vv-test="mascot-full"
+        vx-show="expanded && !tucked && zone !== 'bl' && zone !== 'bc' && zone !== 'br'"
+        style="width:94px;height:94px;margin-top:-58px;margin-right:462px"
+      ></div>
     </div>
   </main>
 </body>

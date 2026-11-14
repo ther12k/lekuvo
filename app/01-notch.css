@@ -14,6 +14,13 @@ html, body {
   background: transparent;
 }
 
+/* Tailwind preflight parity: the renderer emulates UA <p> margins
+   (1em blocks), but the develop UI this port mirrors was authored
+   against preflight — every gap below is an explicit utility. */
+p {
+  margin: 0;
+}
+
 #grip {
   cursor: move;
 }
@@ -90,12 +97,38 @@ html, body {
 /* Reference notch chrome: the floating-island drop shadow and the
    song-color glow ring under the album art / vinyl. */
 .lk-cardedge { box-shadow: 0 22px 50px -16px rgba(15,20,60,0.7); }
-.lk-artglow  { box-shadow: 0 14px 34px -10px #9DB2FF66; }
+/* The art glow follows the SONG color (develop: boxShadow `0 14px 34px
+   -10px ${c0}` on the art tile), not the theme accent — the demo song
+   "Neon Bubblegum" is pink (#FF9EC4, #7C6CF2). Theme sheets no longer
+   override this rule. */
+.lk-artglow  { box-shadow: 0 14px 34px -10px #FF9EC4; }
 /* The vinyl center dot's accent ring (reference song color c0). */
-.lk-vinyl-dot { border: 3px solid #9DB2FF; }
+.lk-vinyl-dot { border: 3px solid #FF9EC4; }
+
+/* ─── Song accent (develop song.colors[0] of the demo song; the host
+       will drive these per track later) ─── */
+.lk-song     { background-color: #FF9EC4; }
+.lk-song-ink { color: #FF9EC4; }
 
 /* Current lyric line (reference song.colors[0]). */
-.lk-lyric-on { color: #9DB2FF; }
+.lk-lyric-on { color: #FF9EC4; }
+
+/* ─── Seek fill, segment i of 10: develop renders ONE continuous
+       `linear-gradient(90deg, c0, c1)` fill, but the port's seek is ten
+       host-dispatched segment buttons (seek-0..9). Interpolating
+       #FF9EC4→#7C6CF2 at each segment's midpoint keeps the filled run
+       reading as the same gradient without renderer features the
+       segment buttons can't express. ─── */
+.lk-seek-0 { background-color: #F2A5D5; }
+.lk-seek-1 { background-color: #E69FD8; }
+.lk-seek-2 { background-color: #DA99DB; }
+.lk-seek-3 { background-color: #CE93DE; }
+.lk-seek-4 { background-color: #C28DE1; }
+.lk-seek-5 { background-color: #B687E4; }
+.lk-seek-6 { background-color: #AA81E7; }
+.lk-seek-7 { background-color: #9E7BEA; }
+.lk-seek-8 { background-color: #9275ED; }
+.lk-seek-9 { background-color: #866FF0; }
 
 /* Mini-calendar day cells (develop SystemPanel MiniCalendar). */
 .cal-cell {
