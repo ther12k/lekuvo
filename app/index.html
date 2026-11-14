@@ -102,8 +102,9 @@
           <!-- playing indicator: pulsing bars -->
           <div id="pill" vx-show="live === 'music' && media.playing" class="flex items-end gap-[3px] shrink-0" style="height:14px">
             <div class="lk-eqbar animate-pulse" style="width:3px;height:14px;border-radius:999px"></div>
-            <div class="lk-eqbar animate-pulse" style="width:3px;height:10px;border-radius:999px"></div>
-            <div class="lk-eqbar animate-pulse" style="width:3px;height:7px;border-radius:999px"></div>
+            <div class="lk-eqbar animate-pulse" style="width:3px;height:14px;border-radius:999px"></div>
+            <div class="lk-eqbar animate-pulse" style="width:3px;height:14px;border-radius:999px"></div>
+            <div class="lk-eqbar animate-pulse" style="width:3px;height:14px;border-radius:999px"></div>
           </div>
           <div
             id="pill"
@@ -133,7 +134,7 @@
     <div
       id="toast"
       data-vv-test="toast"
-      class="lk-surface mt-2 flex items-center gap-3 pl-2.5 pr-3.5 rounded-[30px] text-white cursor-pointer"
+      class="lk-surface mt-2 flex items-center gap-3 pl-2.5 pr-3.5 rounded-[30px] text-white cursor-pointer border border-white/10"
       style="width:450px;height:82px"
       vx-show="toast.visible && !tucked"
     >
@@ -162,29 +163,36 @@
     <div
       id="card"
       data-vv-test="card"
-      class="relative shrink-0 mt-2"
+      class="lk-cardedge relative shrink-0 mt-2"
       style="width:600px;height:392px"
       vx-show="expanded && !tucked"
     >
       <div
         id="card-surface"
-        class="lk-surface lk-tint-music w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none"
-        :class="tab === 'focus' ? 'lk-surface lk-tint-focus w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : tab === 'todo' ? 'lk-surface lk-tint-todo w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : tab === 'board' ? 'lk-surface lk-tint-board w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : tab === 'mixer' ? 'lk-surface lk-tint-mixer w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : tab === 'noise' ? 'lk-surface lk-tint-noise w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : tab === 'mirror' ? 'lk-surface lk-tint-mirror w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : tab === 'system' ? 'lk-surface lk-tint-system w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : tab === 'ai' ? 'lk-surface lk-tint-ai w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : tab === 'home' ? 'lk-surface lk-tint-home w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
-          : 'lk-surface lk-tint-music w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'"
+        class="lk-surface w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none"
       >
-        <!-- (header / panels / footer follow; the tab tint is pre-blended
-             into the `lk-tint-*` surface classes — the renderer paints
-             solid colors only, so the reference radial wash becomes a
-             flat 14% tint over each theme's notch navy, re-skinned by
-             the theme-*.css sheets) -->
+        <!-- Tab wash: the reference tints the card's top-left corner with
+             the active tab color (radial-gradient(120% 80% at 0% 0%,
+             {color at 14%}, transparent 60%)) over the notch navy. The
+             renderer paints solids only, so a rounded accent blob hangs
+             off a zero-height overflow-visible row at the card's top-left
+             (the card's own overflow-hidden clips it to the corner);
+             `lk-tint-*` carries the tab color at ~12% alpha, blending
+             over whatever navy the active theme paints underneath. -->
+        <div class="flex min-h-0" style="height:0">
+          <div
+            :class="tab === 'focus' ? 'lk-corner lk-tint-focus'
+              : tab === 'todo' ? 'lk-corner lk-tint-todo'
+              : tab === 'board' ? 'lk-corner lk-tint-board'
+              : tab === 'mixer' ? 'lk-corner lk-tint-mixer'
+              : tab === 'noise' ? 'lk-corner lk-tint-noise'
+              : tab === 'mirror' ? 'lk-corner lk-tint-mirror'
+              : tab === 'system' ? 'lk-corner lk-tint-system'
+              : tab === 'ai' ? 'lk-corner lk-tint-ai'
+              : tab === 'home' ? 'lk-corner lk-tint-home'
+              : 'lk-corner lk-tint-music'"
+          ></div>
+        </div>
 
         <!-- header: move grip + 10-tab bar + pin + close -->
         <div class="relative flex items-center gap-2 p-3 pb-0 shrink-0">
@@ -269,26 +277,28 @@
           <!-- ── Music: art + vinyl, lyrics, seek, transport ── -->
           <div vx-show="tab === 'music'" class="h-full flex gap-3.5 items-stretch">
             <div class="flex flex-col items-center gap-2 shrink-0" style="width:104px">
-              <div vx-show="hasArt" class="rounded-[26px] overflow-hidden lk-inset shrink-0" style="width:104px;height:104px">
+              <div vx-show="hasArt" class="lk-artglow rounded-[26px] overflow-hidden lk-inset shrink-0" style="width:104px;height:104px">
                 <img src="art/current.png" alt="" style="width:104px;height:104px" />
               </div>
               <div
                 vx-show="!hasArt"
-                :class="media.playing ? 'lk-vinyl animate-spin shrink-0' : 'lk-vinyl shrink-0'"
+                :class="media.playing ? 'lk-vinyl lk-artglow animate-spin shrink-0' : 'lk-vinyl lk-artglow shrink-0'"
                 style="width:104px;height:104px;border-radius:999px;display:flex;flex-direction:column;align-items:center;padding-top:14px"
               >
                 <div style="width:7px;height:7px;border-radius:999px;background-color:#F2F4FFB3"></div>
                 <div class="lk-vinyl-ring" style="width:60px;height:60px;border-radius:999px;border:6px solid #FFFFFF2E;display:flex;align-items:center;justify-content:center;margin-top:8px">
                   <div style="width:30px;height:30px;border-radius:999px;background-color:#10131F;display:flex;align-items:center;justify-content:center">
-                    <div style="width:10px;height:10px;border-radius:999px;background-color:#F2F4FFEB"></div>
+                    <div class="lk-vinyl-dot" style="width:16px;height:16px;border-radius:999px;background-color:#F2F4FFEB"></div>
                   </div>
                 </div>
               </div>
               <div class="flex items-end gap-[3px]" style="height:14px">
                 <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:11px;border-radius:999px"></div>
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:8px;border-radius:999px"></div>
-                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:12px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
               </div>
             </div>
             <div class="flex-1 min-w-0 flex flex-col">

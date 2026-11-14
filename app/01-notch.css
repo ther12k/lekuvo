@@ -4,9 +4,11 @@
    swap (theme-<name>.css replaces the "theme" sheet id at runtime).
 
    The renderer paints solid colors only (no gradients/images), so the
-   reference's radial tab tints and noise-tile gradients are expressed
-   as flat accent fills: the card wash uses 8-digit-hex tints inline,
-   and the per-tab active fills are the constant `tab-on-*` classes. */
+   reference's radial tab wash becomes the `lk-corner` accent blob
+   (a rounded overlay at the card's top-left, clipped by the card),
+   filled with the tab color at ~12% alpha by the `lk-tint-*` classes
+   so it blends over each theme's own notch navy. The per-tab active
+   fills are the constant `tab-on-*` classes. */
 
 html, body {
   background: transparent;
@@ -37,8 +39,9 @@ html, body {
 /* readable ink on accent fills (reference text-navy, #1E2768) */
 .lk-ink     { color: #1E2768; }
 
-/* Interactive buttons built on the inset color. */
-.lk-btn { background-color: #2B3270; }
+/* Interactive buttons built on the inset color. The hairline edge
+   mirrors the reference's border-white/10 row detailing. */
+.lk-btn { background-color: #2B3270; border: 1px solid #FFFFFF1A; }
 .lk-btn:hover { background-color: #3A4380; }
 /* The primary transport button, on the royal accent. */
 .lk-btn-accent { background-color: #4C5FD7; }
@@ -46,31 +49,55 @@ html, body {
 
 #pill:hover { background-color: #1E293B; }
 
-/* ─── Active-tab fills (reference TABS[i].color; constant across themes) ─── */
-.tab-on-music  { background-color: #9DB2FF; }
-.tab-on-focus  { background-color: #F8D77B; }
-.tab-on-todo   { background-color: #86E3C3; }
-.tab-on-board  { background-color: #7DD3FC; }
-.tab-on-mixer  { background-color: #FFB38A; }
-.tab-on-noise  { background-color: #C4B5FD; }
-.tab-on-mirror { background-color: #FF9EC4; }
-.tab-on-system { background-color: #A5B4FC; }
-.tab-on-ai     { background-color: #F5B455; }
-.tab-on-home   { background-color: #6FD9E8; }
+/* ─── Active-tab fills (reference TABS[i].color; constant across themes).
+       The 3px drop line under the active pill is the reference's
+       shadow-[0_3px_0_#2D3CA3] (its --color-royal-deep). ─── */
+.tab-on-music  { background-color: #9DB2FF; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-focus  { background-color: #F8D77B; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-todo   { background-color: #86E3C3; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-board  { background-color: #7DD3FC; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-mixer  { background-color: #FFB38A; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-noise  { background-color: #C4B5FD; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-mirror { background-color: #FF9EC4; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-system { background-color: #A5B4FC; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-ai     { background-color: #F5B455; box-shadow: 0 3px 0 #2D3CA3; }
+.tab-on-home   { background-color: #6FD9E8; box-shadow: 0 3px 0 #2D3CA3; }
 
-/* ─── Card surface tints (tab color at 14% over the notch navy; the
-       flat stand-in for the reference's radial wash — theme-*.css
-       re-skins these over each theme's own notch) ─── */
-.lk-tint-music  { background-color: #313969; }
-.lk-tint-focus  { background-color: #3E3E56; }
-.lk-tint-todo   { background-color: #2E4060; }
-.lk-tint-board  { background-color: #2C3E68; }
-.lk-tint-mixer  { background-color: #3F3958; }
-.lk-tint-noise  { background-color: #363968; }
-.lk-tint-mirror { background-color: #3F3660; }
-.lk-tint-system { background-color: #323968; }
-.lk-tint-ai     { background-color: #3D3951; }
-.lk-tint-home   { background-color: #2A3E65; }
+/* ─── Card corner wash: the reference is
+       radial-gradient(120% 80% at 0% 0%, {tab color at 14%},
+       transparent 60%). The blob hangs off a zero-height
+       overflow-visible row as the card's first child; the negative
+       margins push its own rounded corners past the card's clip, so
+       only the bottom-right rounding shows, strongest at the card's
+       top-left corner and fading toward the panel. ─── */
+.lk-corner {
+  width: 340px;
+  height: 220px;
+  border-radius: 9999px;
+  margin: -30px 0 0 -40px;
+}
+
+/* Tab colors at ~12% alpha (0x1F): they blend over whatever navy the
+   active theme paints under them, so one set serves every theme. The
+   blurred tail (0 0 70px 30px at 15%) feathers the flat blob out the
+   way the reference radial fades toward transparent. */
+.lk-tint-music  { background-color: #9DB2FF1F; box-shadow: 0 0 70px 30px #9DB2FF26; }
+.lk-tint-focus  { background-color: #F8D77B1F; box-shadow: 0 0 70px 30px #F8D77B26; }
+.lk-tint-todo   { background-color: #86E3C31F; box-shadow: 0 0 70px 30px #86E3C326; }
+.lk-tint-board  { background-color: #7DD3FC1F; box-shadow: 0 0 70px 30px #7DD3FC26; }
+.lk-tint-mixer  { background-color: #FFB38A1F; box-shadow: 0 0 70px 30px #FFB38A26; }
+.lk-tint-noise  { background-color: #C4B5FD1F; box-shadow: 0 0 70px 30px #C4B5FD26; }
+.lk-tint-mirror { background-color: #FF9EC41F; box-shadow: 0 0 70px 30px #FF9EC426; }
+.lk-tint-system { background-color: #A5B4FC1F; box-shadow: 0 0 70px 30px #A5B4FC26; }
+.lk-tint-ai     { background-color: #F5B4551F; box-shadow: 0 0 70px 30px #F5B45526; }
+.lk-tint-home   { background-color: #6FD9E81F; box-shadow: 0 0 70px 30px #6FD9E826; }
+
+/* Reference notch chrome: the floating-island drop shadow and the
+   song-color glow ring under the album art / vinyl. */
+.lk-cardedge { box-shadow: 0 22px 50px -16px rgba(15,20,60,0.7); }
+.lk-artglow  { box-shadow: 0 14px 34px -10px #9DB2FF66; }
+/* The vinyl center dot's accent ring (reference song color c0). */
+.lk-vinyl-dot { border: 3px solid #9DB2FF; }
 
 /* Current lyric line (reference song.colors[0]). */
 .lk-lyric-on { color: #9DB2FF; }

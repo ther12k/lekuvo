@@ -22,14 +22,9 @@
 .lk-vinyl { background-color: #1F9A6B; }
 .lk-eqbar { background-color: #79DCB4; }
 
-/* Card surface tints: tab color at 14% over the meadow notch (#123326). */
-.lk-tint-music  { background-color: #254544; }
-.lk-tint-focus  { background-color: #324A32; }
-.lk-tint-todo   { background-color: #224C3C; }
-.lk-tint-board  { background-color: #214944; }
-.lk-tint-mixer  { background-color: #334534; }
-.lk-tint-noise  { background-color: #2B4544; }
-.lk-tint-mirror { background-color: #33423C; }
-.lk-tint-system { background-color: #274544; }
-.lk-tint-ai     { background-color: #32452D; }
-.lk-tint-home   { background-color: #1F4A41; }
+/* Song glow + vinyl center ring follow the accent. */
+.lk-artglow  { box-shadow: 0 14px 34px -10px #79DCB466; }
+.lk-vinyl-dot { border: 3px solid #79DCB4; }
+
+/* Card corner wash: the constant alpha tints in 01-notch.css
+   blend over this theme's notch navy, so no per-theme overrides here. */

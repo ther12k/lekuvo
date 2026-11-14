@@ -879,6 +879,27 @@ fn run_headless_snapshots(
             ("dur".to_owned(), ReactiveValue::Number(192_000_000.0)),
         ]),
     );
+    // Lyric window around t=72s of the reference demo song (develop
+    // SONGS[0]: abs = t/4 = 18, so lines 16..20 wrap to the six-line
+    // array with the current line at index 18 % 6 = 0).
+    let lyric_lines = [
+        ("Pink lights on the avenue", true),
+        ("Bubblegum skies, I'm chasing you", false),
+        ("Windows down, volume loud", false),
+        ("Dancing on a neon cloud", false),
+        ("Say my name like a melody", false),
+    ];
+    let _ = view.write_state("lyrics.has", ReactiveValue::Bool(true));
+    for (slot, (text, current)) in lyric_lines.iter().enumerate() {
+        let _ = view.write_state(
+            &format!("lyrics.l{slot}"),
+            ReactiveValue::String((*text).to_owned()),
+        );
+        let _ = view.write_state(
+            &format!("lyrics.c{slot}"),
+            ReactiveValue::Bool(*current),
+        );
+    }
     capture(&mut view, &sprites, &moods, "music");
 
     // Scene: expanded system tab (with the mini calendar).
