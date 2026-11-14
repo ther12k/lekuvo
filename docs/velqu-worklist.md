@@ -70,3 +70,13 @@ bench is the honest gate.
 7. `text-wrap: balance/pretty`, letter-spacing for the display font (Outfit reads
    tighter in the reference).
 8. Focus-visible pseudo-state (keyboard path) — frozen-set ADR 0011 extension.
+
+## P0 additions (found 2026-11-15, user screenshot + pixel proof)
+9. **background-image must composite over background-color**: when a gradient
+   background-image is present, the painter drops the solid background-color
+   fill — wherever the gradient is transparent, the surface vanishes (the card
+   showed the desktop through it; measured 61% desktop pixels inside the card).
+   Interim app fix: opaque navy underlay div + wash on a separate layer.
+10. **Text vertical centering in flex/pill shapes**: text sits off-center inside
+    buttons/pills (baseline vs content-box math). App mitigation: line-height:1
+    on .lk-btn. Needs correct baseline/line-box handling in text layout.

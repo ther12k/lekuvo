@@ -171,19 +171,27 @@
     >
       <div
         id="card-surface"
-        class="lk-surface w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none"
-        :class="'lk-surface w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none '
-          + (tab === 'focus' ? 'lk-wash-focus'
-          : tab === 'todo' ? 'lk-wash-todo'
-          : tab === 'board' ? 'lk-wash-board'
-          : tab === 'mixer' ? 'lk-wash-mixer'
-          : tab === 'noise' ? 'lk-wash-noise'
-          : tab === 'mirror' ? 'lk-wash-mirror'
-          : tab === 'system' ? 'lk-wash-system'
-          : tab === 'ai' ? 'lk-wash-ai'
-          : tab === 'home' ? 'lk-wash-home'
-          : 'lk-wash-music')"
+        class="lk-surface w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none relative"
       >
+        <!-- Opaque base underlay first: the renderer's background-image
+             currently replaces background-color instead of compositing over
+             it, so a wash on the surface would erase the navy base. The
+             wash lives on its own underlay; content sits above it. -->
+        <div
+          id="card-wash"
+          class="absolute inset-0 rounded-[30px]"
+          :class="'lk-wash '
+            + (tab === 'focus' ? 'lk-wash-focus'
+            : tab === 'todo' ? 'lk-wash-todo'
+            : tab === 'board' ? 'lk-wash-board'
+            : tab === 'mixer' ? 'lk-wash-mixer'
+            : tab === 'noise' ? 'lk-wash-noise'
+            : tab === 'mirror' ? 'lk-wash-mirror'
+            : tab === 'system' ? 'lk-wash-system'
+            : tab === 'ai' ? 'lk-wash-ai'
+            : tab === 'home' ? 'lk-wash-home'
+            : 'lk-wash-music')"
+        ></div>
         <!-- Tab wash: the reference tints the card's top-left corner with
              the active tab color — radial-gradient(120% 80% at 0% 0%,
              {color at 14%}, transparent 60%) over the notch navy. The
