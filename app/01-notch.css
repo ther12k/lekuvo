@@ -3,12 +3,12 @@
    `lk-*` classes below so the whole UI retheme is one stylesheet
    swap (theme-<name>.css replaces the "theme" sheet id at runtime).
 
-   The renderer paints solid colors only (no gradients/images), so the
-   reference's radial tab wash becomes the `lk-corner` accent blob
-   (a rounded overlay at the card's top-left, clipped by the card),
-   filled with the tab color at ~12% alpha by the `lk-tint-*` classes
-   so it blends over each theme's own notch navy. The per-tab active
-   fills are the constant `tab-on-*` classes. */
+   The reference's radial tab wash is a real background-image gradient
+   on `#card-surface` (`lk-wash-*` below — the renderer paints
+   gradients natively since velqu-view ADR 0026), over each theme's
+   own notch navy. The per-tab active fills are the constant
+   `tab-on-*` classes, and the pill↔card morph runs on a physical
+   spring (ADR 0027). */
 
 html, body {
   background: transparent;
@@ -65,32 +65,27 @@ html, body {
 
 /* ─── Card corner wash: the reference is
        radial-gradient(120% 80% at 0% 0%, {tab color at 14%},
-       transparent 60%). The blob hangs off a zero-height
-       overflow-visible row as the card's first child; the negative
-       margins push its own rounded corners past the card's clip, so
-       only the bottom-right rounding shows, strongest at the card's
-       top-left corner and fading toward the panel. ─── */
-.lk-corner {
-  width: 340px;
-  height: 220px;
-  border-radius: 9999px;
-  margin: -30px 0 0 -40px;
-}
+       transparent 60%) over the notch navy — now painted natively by
+       the renderer (velqu-view ADR 0026) as a background-image layer
+       on `#card-surface`, resolving against the surface's current box
+       each frame so it follows the morph. One rule per tab color. ─── */
+.lk-wash-music  { background-image: radial-gradient(120% 80% at 0% 0%, #9DB2FF24, transparent 60%); }
+.lk-wash-focus  { background-image: radial-gradient(120% 80% at 0% 0%, #F8D77B24, transparent 60%); }
+.lk-wash-todo   { background-image: radial-gradient(120% 80% at 0% 0%, #86E3C324, transparent 60%); }
+.lk-wash-board  { background-image: radial-gradient(120% 80% at 0% 0%, #7DD3FC24, transparent 60%); }
+.lk-wash-mixer  { background-image: radial-gradient(120% 80% at 0% 0%, #FFB38A24, transparent 60%); }
+.lk-wash-noise  { background-image: radial-gradient(120% 80% at 0% 0%, #C4B5FD24, transparent 60%); }
+.lk-wash-mirror { background-image: radial-gradient(120% 80% at 0% 0%, #FF9EC424, transparent 60%); }
+.lk-wash-system { background-image: radial-gradient(120% 80% at 0% 0%, #A5B4FC24, transparent 60%); }
+.lk-wash-ai     { background-image: radial-gradient(120% 80% at 0% 0%, #F5B45524, transparent 60%); }
+.lk-wash-home   { background-image: radial-gradient(120% 80% at 0% 0%, #6FD9E824, transparent 60%); }
 
-/* Tab colors at ~12% alpha (0x1F): they blend over whatever navy the
-   active theme paints under them, so one set serves every theme. The
-   blurred tail (0 0 70px 30px at 15%) feathers the flat blob out the
-   way the reference radial fades toward transparent. */
-.lk-tint-music  { background-color: #9DB2FF1F; box-shadow: 0 0 70px 30px #9DB2FF26; }
-.lk-tint-focus  { background-color: #F8D77B1F; box-shadow: 0 0 70px 30px #F8D77B26; }
-.lk-tint-todo   { background-color: #86E3C31F; box-shadow: 0 0 70px 30px #86E3C326; }
-.lk-tint-board  { background-color: #7DD3FC1F; box-shadow: 0 0 70px 30px #7DD3FC26; }
-.lk-tint-mixer  { background-color: #FFB38A1F; box-shadow: 0 0 70px 30px #FFB38A26; }
-.lk-tint-noise  { background-color: #C4B5FD1F; box-shadow: 0 0 70px 30px #C4B5FD26; }
-.lk-tint-mirror { background-color: #FF9EC41F; box-shadow: 0 0 70px 30px #FF9EC426; }
-.lk-tint-system { background-color: #A5B4FC1F; box-shadow: 0 0 70px 30px #A5B4FC26; }
-.lk-tint-ai     { background-color: #F5B4551F; box-shadow: 0 0 70px 30px #F5B45526; }
-.lk-tint-home   { background-color: #6FD9E81F; box-shadow: 0 0 70px 30px #6FD9E826; }
+/* ─── The pill↔card morph runs on a physical spring (velqu-view ADR
+       0027): momentum-preserving retargets make mid-morph taps keep
+       moving, and the duration is emergent — the `duration-500
+       ease-out` utilities on the class are ignored on this path. ζ ≈
+       0.92: one gentle ~2% overshoot, settling in roughly 0.7s. ─── */
+#card { transition-timing-function: spring(200, 26, 1); }
 
 /* Reference notch chrome: the floating-island drop shadow and the
    song-color glow ring under the album art / vinyl. */

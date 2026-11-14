@@ -8,31 +8,31 @@ perf work (4b187e5), and the running morph/drag profiling pass.
 P0 + the spring half of P1 shipped in velqu-view `host-write-api`
 (commits `27910c4` + `8699042`, ADR 0026/0027):
 
-1. **Gradients — DONE.** `linear-gradient`/`radial-gradient` parse (angles,
-   `to <corner>`, ellipse/circle sizes, `at` positions, px/% stops, hard
-   stops), geometry resolves at emit, per-pixel painter fill; `hsl()`/
-   `hsla()` color parsing added. `var()` inside stops is not resolved yet
-   (declaration skips gracefully) — inline the values or wait for custom
-   properties. **The app still ships the fake blob — adopting real
-   gradients in `app/index.html` is the next port-side step.**
+1. **Gradients — DONE, ADOPTED.** `linear-gradient`/`radial-gradient` parse
+   (angles, `to <corner>`, ellipse/circle sizes, `at` positions, px/% stops,
+   hard stops), geometry resolves at emit, per-pixel painter fill; `hsl()`/
+   `hsla()` color parsing added. The app's card wash is now the real
+   reference gradient (`lk-wash-*` on `#card-surface`); the fake
+   `lk-corner` blob + its 70px feather shadow are gone. `var()` inside
+   stops is not resolved yet (declaration skips gracefully) — inline the
+   values or wait for custom properties.
 2. **Crisp 1px borders — DONE.** Coverage rasterization (ADR 0026): rings
    paint at true partial coverage at any fractional position.
 3. **Subpixel layout — DONE.** The painter no longer snaps edges; exact
    span fractions + SDF/4×4-subsample coverage. 8/18 velqu-view fixture
    digests re-pinned after audit (AA edges only, geometry identical).
-4. **Springs — DONE (engine side).** Physical damped oscillator on the
-   virtual clock, momentum-preserving retargets,
+4. **Springs — DONE, ADOPTED.** Physical damped oscillator on the virtual
+   clock, momentum-preserving retargets,
    `transition-timing-function: spring(k, d[, m])`, `box-shadow` (first
-   layer) animatable, no authored duration needed. **The app's morph still
-   uses `duration-500 ease-out` — switching the card to
-   `transition-timing-function: spring(...)` is the port-side step** (the
-   pill-morph lag fix by construction).
+   layer) animatable, no authored duration needed. The card morph runs
+   `spring(200, 26, 1)` (ζ ≈ 0.92 — one gentle overshoot, ~0.65s settle,
+   momentum carried through mid-morph taps).
 5. **Damage-region painting — DONE** (perf stream, same batch): display-list
    diff → repaint window; `LEKUVO_PERF=1` instruments every phase.
 
-Known issue being worked: the AA'd box-shadow ring stack dominates morph
-frames on the real card (paint 120ms/frame at 760×560 before the in-flight
-row-band fast path lands) — a renderer fix is in progress.
+Morph bench on the real card (single-pass shadow + scoped damage + wash
+gradient + spring): render p95 14.6ms, interval p95 16.0ms — the 22ms gate
+passes with the morph completing its full spring settle (40 frames).
 
 **Bench caveat:** the binary discovers resources via
 `discover_resources()` → the INSTALLED copy `~/.local/share/lekuvo/app`

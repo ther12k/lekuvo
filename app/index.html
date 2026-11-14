@@ -172,29 +172,25 @@
       <div
         id="card-surface"
         class="lk-surface w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none"
+        :class="'lk-surface w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none '
+          + (tab === 'focus' ? 'lk-wash-focus'
+          : tab === 'todo' ? 'lk-wash-todo'
+          : tab === 'board' ? 'lk-wash-board'
+          : tab === 'mixer' ? 'lk-wash-mixer'
+          : tab === 'noise' ? 'lk-wash-noise'
+          : tab === 'mirror' ? 'lk-wash-mirror'
+          : tab === 'system' ? 'lk-wash-system'
+          : tab === 'ai' ? 'lk-wash-ai'
+          : tab === 'home' ? 'lk-wash-home'
+          : 'lk-wash-music')"
       >
         <!-- Tab wash: the reference tints the card's top-left corner with
-             the active tab color (radial-gradient(120% 80% at 0% 0%,
-             {color at 14%}, transparent 60%)) over the notch navy. The
-             renderer paints solids only, so a rounded accent blob hangs
-             off a zero-height overflow-visible row at the card's top-left
-             (the card's own overflow-hidden clips it to the corner);
-             `lk-tint-*` carries the tab color at ~12% alpha, blending
-             over whatever navy the active theme paints underneath. -->
-        <div class="flex min-h-0" style="height:0">
-          <div
-            :class="tab === 'focus' ? 'lk-corner lk-tint-focus'
-              : tab === 'todo' ? 'lk-corner lk-tint-todo'
-              : tab === 'board' ? 'lk-corner lk-tint-board'
-              : tab === 'mixer' ? 'lk-corner lk-tint-mixer'
-              : tab === 'noise' ? 'lk-corner lk-tint-noise'
-              : tab === 'mirror' ? 'lk-corner lk-tint-mirror'
-              : tab === 'system' ? 'lk-corner lk-tint-system'
-              : tab === 'ai' ? 'lk-corner lk-tint-ai'
-              : tab === 'home' ? 'lk-corner lk-tint-home'
-              : 'lk-corner lk-tint-music'"
-          ></div>
-        </div>
+             the active tab color — radial-gradient(120% 80% at 0% 0%,
+             {color at 14%}, transparent 60%) over the notch navy. The
+             renderer paints gradients natively now (velqu-view ADR 0026),
+             so the wash is a real background-image layer on the surface
+             (`lk-wash-*` in 01-notch.css); it resolves against the
+             surface's current box each frame and follows the morph. -->
 
         <!-- header: move grip + 10-tab bar + pin + close -->
         <div class="relative flex items-center gap-2 p-3 pb-0 shrink-0">
