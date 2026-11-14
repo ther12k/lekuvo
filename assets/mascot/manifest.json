@@ -2,144 +2,144 @@
   "moods": {
     "alert": {
       "compact": {
-        "duration_ms": 2200,
+        "duration_ms": 750,
         "frames": 8,
         "loop": false
       },
       "full": {
-        "duration_ms": 2200,
+        "duration_ms": 750,
         "frames": 8,
         "loop": false
       }
     },
     "awake": {
       "compact": {
-        "duration_ms": 5400,
+        "duration_ms": 3600,
         "frames": 8,
         "loop": true
       },
       "full": {
-        "duration_ms": 5400,
+        "duration_ms": 3600,
         "frames": 8,
         "loop": true
       }
     },
     "dance": {
       "compact": {
-        "duration_ms": 900,
+        "duration_ms": 920,
         "frames": 8,
         "loop": true
       },
       "full": {
-        "duration_ms": 900,
+        "duration_ms": 920,
         "frames": 8,
         "loop": true
       }
     },
     "dizzy": {
       "compact": {
-        "duration_ms": 2300,
+        "duration_ms": 920,
         "frames": 8,
         "loop": false
       },
       "full": {
-        "duration_ms": 2300,
+        "duration_ms": 920,
         "frames": 8,
         "loop": false
       }
     },
     "focus": {
       "compact": {
-        "duration_ms": 10000,
+        "duration_ms": 3600,
         "frames": 8,
         "loop": true
       },
       "full": {
-        "duration_ms": 10000,
+        "duration_ms": 3600,
         "frames": 8,
         "loop": true
       }
     },
     "lazy": {
       "compact": {
-        "duration_ms": 9000,
+        "duration_ms": 3600,
         "frames": 8,
         "loop": true
       },
       "full": {
-        "duration_ms": 9000,
+        "duration_ms": 3600,
         "frames": 8,
         "loop": true
       }
     },
     "listening": {
       "compact": {
-        "duration_ms": 1800,
+        "duration_ms": 920,
         "frames": 8,
         "loop": true
       },
       "full": {
-        "duration_ms": 1800,
+        "duration_ms": 920,
         "frames": 8,
         "loop": true
       }
     },
     "sleep": {
       "compact": {
-        "duration_ms": 5000,
+        "duration_ms": 5400,
         "frames": 8,
         "loop": true
       },
       "full": {
-        "duration_ms": 5000,
+        "duration_ms": 5400,
         "frames": 8,
         "loop": true
       }
     },
     "success": {
       "compact": {
-        "duration_ms": 1650,
+        "duration_ms": 920,
         "frames": 8,
         "loop": false
       },
       "full": {
-        "duration_ms": 1650,
+        "duration_ms": 920,
         "frames": 8,
         "loop": false
       }
     },
     "surprised": {
       "compact": {
-        "duration_ms": 480,
+        "duration_ms": 750,
         "frames": 8,
         "loop": false
       },
       "full": {
-        "duration_ms": 480,
+        "duration_ms": 750,
         "frames": 8,
         "loop": false
       }
     },
     "thinking": {
       "compact": {
-        "duration_ms": 1800,
+        "duration_ms": 3600,
         "frames": 8,
         "loop": true
       },
       "full": {
-        "duration_ms": 1800,
+        "duration_ms": 3600,
         "frames": 8,
         "loop": true
       }
     },
     "wave": {
       "compact": {
-        "duration_ms": 1650,
+        "duration_ms": 1000,
         "frames": 8,
         "loop": false
       },
       "full": {
-        "duration_ms": 1650,
+        "duration_ms": 1000,
         "frames": 8,
         "loop": false
       }

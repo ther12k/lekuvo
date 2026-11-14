@@ -7,11 +7,14 @@
 //! and priority-aware resolution. The kit's JS timers become a `tick`
 //! the host drives from its own monotonic clock (never reset).
 //!
-//! The artwork itself is baked at build time from the kit's original
-//! SVG (`tools/mascot-bake`) into per-mood PNG frame strips; this crate
-//! decodes them once and composites frames onto the rendered notch
-//! frame with source-over blending. Each strip carries its authored
-//! cycle duration so native playback preserves the original pacing.
+//! The artwork itself is baked at build time from the reference
+//! mascot (a faithful port of the develop site's inline SVG, see
+//! `tools/mascot-bake`) into per-mood PNG frame strips at 3x; this
+//! crate decodes them once and composites frames onto the rendered
+//! notch frame with source-over blending and an area-average
+//! minification so the 3x source stays crisp at slot size. Each strip
+//! carries its authored cycle duration so native playback preserves
+//! the original pacing.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -672,7 +675,14 @@ impl SpriteStore {
 }
 
 /// Composites one RGBA sprite onto an RGBA destination buffer
-/// (source-over), scaling to `rect` with nearest-neighbor sampling.
+/// (source-over), scaling to `rect`.
+///
+/// Scaling is an area average (box filter): every destination pixel
+/// averages the source pixels its rectangle covers, weighted by
+/// overlap. The baked frames are 3x rasterizations of vector art, so
+/// they are always minified into the notch's ~44-92px slots; an area
+/// average keeps that downscale crisp (nearest-neighbor would drop
+/// ~85% of the source samples at 288->44 and alias the outlines).
 pub fn composite(
     dst: &mut [u8],
     dst_width: u32,
@@ -691,39 +701,81 @@ pub fn composite(
         if dy >= dst_h {
             break;
         }
-        let sy = y * sprite_height / rh;
+        // Continuous source rows this destination row covers.
+        let sy0 = y as f64 * sprite_height as f64 / rh as f64;
+        let sy1 = (y + 1) as f64 * sprite_height as f64 / rh as f64;
         for x in 0..rw {
             let dx = rx + x;
             if dx >= dst_width {
                 break;
             }
-            let sx = x * sprite_width / rw;
-            let s = (sy * sprite_width + sx) as usize * 4;
-            let Some(sr) = sprite.get(s..s + 4) else {
+            let sx0 = x as f64 * sprite_width as f64 / rw as f64;
+            let sx1 = (x + 1) as f64 * sprite_width as f64 / rw as f64;
+            // Coverage-weighted premultiplied average of the covered
+            // source pixels.
+            let (mut acc_a, mut acc_r, mut acc_g, mut acc_b, mut acc_w) =
+                (0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64);
+            let row_start = sy0.floor().max(0.0) as u32;
+            let row_end = (sy1.ceil() as u32).min(sprite_height);
+            let col_start = sx0.floor().max(0.0) as u32;
+            let col_end = (sx1.ceil() as u32).min(sprite_width);
+            for sy in row_start..row_end {
+                let wy = overlap(sy as f64, sy as f64 + 1.0, sy0, sy1);
+                if wy <= 0.0 {
+                    continue;
+                }
+                for sx in col_start..col_end {
+                    let wx = overlap(sx as f64, sx as f64 + 1.0, sx0, sx1);
+                    if wx <= 0.0 {
+                        continue;
+                    }
+                    let s = (sy * sprite_width + sx) as usize * 4;
+                    let Some(sr) = sprite.get(s..s + 4) else {
+                        continue;
+                    };
+                    let w = wx * wy;
+                    let a = sr[3] as f64;
+                    acc_a += a * w;
+                    acc_r += sr[0] as f64 * a * w;
+                    acc_g += sr[1] as f64 * a * w;
+                    acc_b += sr[2] as f64 * a * w;
+                    acc_w += w;
+                }
+            }
+            if acc_w <= 0.0 || acc_a <= 0.0 {
                 continue;
-            };
+            }
+            let sa = (acc_a / acc_w).round().clamp(0.0, 255.0) as u32;
+            if sa == 0 {
+                continue;
+            }
             let d = (dy * dst_width + dx) as usize * 4;
             let Some(dr) = dst.get_mut(d..d + 4) else {
                 continue;
             };
-            let sa = sr[3] as u32;
-            if sa == 0 {
-                continue;
-            }
             if sa == 255 {
-                dr.copy_from_slice(sr);
+                dr[0] = (acc_r / acc_a).round().clamp(0.0, 255.0) as u8;
+                dr[1] = (acc_g / acc_a).round().clamp(0.0, 255.0) as u8;
+                dr[2] = (acc_b / acc_a).round().clamp(0.0, 255.0) as u8;
+                dr[3] = 255;
                 continue;
             }
+            let inv = 255 - sa;
             let da = dr[3] as u32;
-            let out_a = sa + da * (255 - sa) / 255;
-            for c in 0..3 {
-                let sc = sr[c] as u32 * sa;
-                let dc = dr[c] as u32 * da * (255 - sa) / 255;
-                dr[c] = (sc + dc).checked_div(out_a).unwrap_or(0).min(255) as u8;
+            let out_a = sa + da * inv / 255;
+            for (c, acc) in dr.iter_mut().take(3).zip([acc_r, acc_g, acc_b]) {
+                let sc = (acc / acc_a).round().clamp(0.0, 255.0) as u32 * sa;
+                let dc = *c as u32 * da * inv / 255;
+                *c = (sc + dc).checked_div(out_a).unwrap_or(0).min(255) as u8;
             }
             dr[3] = out_a.min(255) as u8;
         }
     }
+}
+
+/// Overlap length of intervals `[a0, a1)` and `[b0, b1)`.
+fn overlap(a0: f64, a1: f64, b0: f64, b1: f64) -> f64 {
+    (a1.min(b1) - a0.max(b0)).max(0.0)
 }
 
 #[cfg(test)]
@@ -890,5 +942,39 @@ mod tests {
         let opaque = vec![0u8, 0, 255, 255];
         composite(&mut dst, 2, (0, 0, 2, 2), &opaque, 1, 1);
         assert_eq!(&dst[0..4], &[0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn compositing_minifies_with_area_average() {
+        // A 2x2 sprite minified to 1x1 averages its four pixels.
+        let mut dst = [0u8, 0, 0, 0];
+        let sprite: Vec<u8> = [
+            [255, 0, 0, 255],   // red
+            [0, 255, 0, 255],   // green
+            [0, 0, 255, 255],   // blue
+            [255, 255, 0, 255], // yellow
+        ]
+        .concat();
+        composite(&mut dst, 1, (0, 0, 1, 1), &sprite, 2, 2);
+        // Average: r = (255+0+0+255)/4 = 127.5, g = 127.5, b = 63.75.
+        assert_eq!(dst[3], 255);
+        assert!((dst[0] as i32 - 128).abs() <= 1);
+        assert!((dst[1] as i32 - 128).abs() <= 1);
+        assert!((dst[2] as i32 - 64).abs() <= 1);
+
+        // Premultiplied box filter: a 3x1 sprite that is opaque only in
+        // its middle pixel covers one third of the destination pixel,
+        // so it minifies to white at one-third coverage — color
+        // undiluted, opacity diluted by area, exactly like a
+        // high-quality downscaler.
+        let mut dst2 = [0u8, 0, 0, 0];
+        let sprite2: Vec<u8> = [
+            [0, 0, 0, 0],
+            [255, 255, 255, 255],
+            [0, 0, 0, 0],
+        ]
+        .concat();
+        composite(&mut dst2, 1, (0, 0, 1, 1), &sprite2, 3, 1);
+        assert_eq!(&dst2[0..4], &[255, 255, 255, 85]);
     }
 }

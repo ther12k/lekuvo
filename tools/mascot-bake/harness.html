@@ -4,48 +4,59 @@
   <meta charset="utf-8" />
   <title>bake</title>
   <style>
+    @font-face {
+      font-family: "Outfit";
+      src: url("/app/fonts/Nunito-800.ttf") format("truetype");
+      font-weight: 800;
+    }
     html, body { margin: 0; padding: 0; background: transparent; }
     #grid { display: flex; flex-direction: column; }
     .row { display: flex; }
     .cell { width: var(--slot); height: var(--slot); overflow: hidden; }
-    lekuvo-mascot { display: block; }
+    .cell svg { display: block; }
   </style>
 </head>
 <body>
   <!--
-    Bakes every mood x frame of the Lekuvo mascot into one grid so a
-    single headless screenshot captures a whole variant. URL params:
-      variant=full|compact   slot=px   frames=N
-    Row order = the kit's MOODS order; each row freezes the mood's CSS
-    animation cycle at i/frames fractions.
+    Bakes every mood x frame of the reference Lekuvo mascot (ported
+    from the develop repo's Lekuvo.tsx into ref-mascot.js) into one
+    grid so a single headless screenshot captures a whole variant.
+    URL params: variant=full|compact  slot=px  frames=N
+    Row order = APP_MOODS order; each row freezes the mood's CSS
+    animation cycle at i/frames fractions. Frames are square with the
+    240x190 artwork letterboxed (see ref-mascot.js).
   -->
   <div id="grid"></div>
   <script type="module">
-    import { MOODS } from "/vendor/lekuvo-svg-kit/src/lekuvo-mascot.js";
+    import { APP_MOODS, APP_MOOD_CYCLES, MASCOT_CSS, renderAppMood } from "/tools/mascot-bake/ref-mascot.js";
+
+    const style = document.createElement("style");
+    style.textContent = MASCOT_CSS;
+    document.head.appendChild(style);
 
     const params = new URLSearchParams(location.search);
     const variant = params.get("variant") || "full";
-    const slot = Number(params.get("slot") || 96);
+    const slot = Number(params.get("slot") || 288);
     const frames = Number(params.get("frames") || 8);
 
     document.documentElement.style.setProperty("--slot", slot + "px");
-    await customElements.whenDefined("lekuvo-mascot");
 
     const grid = document.getElementById("grid");
     const elements = [];
-    for (const mood of MOODS) {
+    for (const mood of Object.keys(APP_MOODS)) {
       const row = document.createElement("div");
       row.className = "row";
       for (let index = 0; index < frames; index += 1) {
         const cell = document.createElement("div");
         cell.className = "cell";
-        const mascot = document.createElement("lekuvo-mascot");
-        mascot.setAttribute("size", String(slot));
-        mascot.setAttribute("variant", variant);
-        mascot.setAttribute("motion", "on");
-        cell.appendChild(mascot);
+        const holder = document.createElement("div");
+        holder.innerHTML = renderAppMood(mood, {
+          size: slot,
+          idPrefix: `${variant}-${mood}-${index}`,
+        });
+        cell.appendChild(holder.firstElementChild);
         row.appendChild(cell);
-        elements.push({ mascot, mood, index });
+        elements.push({ svg: cell, mood, index });
       }
       grid.appendChild(row);
     }
@@ -55,41 +66,10 @@
       requestAnimationFrame(() => requestAnimationFrame(resolve)),
     );
 
-    for (const { mascot, mood } of elements) {
-      mascot.setMood(mood);
-      mascot.removeAttribute("data-paused");
-      if (typeof mascot.resume === "function") mascot.resume();
-    }
-
-    await new Promise((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(resolve)),
-    );
-
-    // Primary cycle per mood in milliseconds (from authored CSS keyframes).
-    const DEFAULT_CYCLES = {
-      dance: 900,
-      wave: 1650,
-      listening: 1800,
-      thinking: 1800,
-      alert: 2200,
-      dizzy: 2300,
-      sleep: 5000,
-      awake: 5400,
-      success: 1650,
-      surprised: 480,
-      focus: 10000,
-      lazy: 9000,
-    };
-
-    for (const { mascot, mood, index } of elements) {
-      const root = mascot.shadowRoot || mascot;
-      const animations = root.getAnimations({ subtree: true });
-      if (animations.length === 0) continue;
-
-      let cycle = DEFAULT_CYCLES[mood] || 1800;
-      // Seek each animation to its phase in the mood's cycle
+    for (const { svg, mood, index } of elements) {
+      const cycle = APP_MOOD_CYCLES[mood] || 1800;
       const at = (index / frames) * cycle;
-      for (const animation of animations) {
+      for (const animation of svg.getAnimations({ subtree: true })) {
         animation.pause();
         const d = animation.effect ? animation.effect.getTiming().duration : 0;
         if (d > 0) {
