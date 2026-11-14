@@ -7,7 +7,9 @@
 use std::path::PathBuf;
 use std::process::Child;
 
-pub const SOUNDS: [&str; 4] = ["rain", "waves", "fire", "wind"];
+pub const SOUNDS: [&str; 8] = [
+    "rain", "forest", "waves", "kalimba", "fire", "wind", "night", "deep",
+];
 
 pub struct NoisePlayer {
     dir: PathBuf,
@@ -127,7 +129,7 @@ fn render(name: &str) -> Vec<i16> {
             }
         }
         // Wind: two averaged noise octaves with a slow gust LFO.
-        _ => {
+        "wind" => {
             let mut seed = 9511u32;
             let mut slow = 0f32;
             for (index, sample) in samples.iter_mut().enumerate() {
@@ -137,6 +139,89 @@ fn render(name: &str) -> Vec<i16> {
                 slow = slow * 0.999 + previous * 0.001;
                 let gust = (index as f32 / RATE as f32 * 2.0 * std::f32::consts::PI).sin() * 0.25 + 0.75;
                 *sample = ((previous * 0.6 + slow.abs() * 0.2) * gust * i16::MAX as f32) as i16;
+            }
+        }
+        // Forest: soft breeze bed with sparse bird-chirp blips.
+        "forest" => {
+            let mut seed = 20486u32;
+            let mut chirp = 0f32;
+            for sample in samples.iter_mut() {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                previous = previous * 0.98 + white * 0.02;
+                // A chirp is a short sine sweep triggered by the LCG.
+                let trigger = seed % 44100 < 3 && seed.is_multiple_of(3);
+                if trigger {
+                    chirp = 0.35;
+                }
+                let mut tone = 0f32;
+                if chirp > 0.001 {
+                    let t = (2.0 - chirp * 2.0) * 0.002;
+                    tone = (t * 2400.0 * std::f32::consts::PI).sin() * chirp;
+                    chirp *= 0.9998;
+                }
+                *sample = ((previous * 0.55 + tone * 0.45) * i16::MAX as f32) as i16;
+            }
+        }
+        // Kalimba: pentatonic plucks over a soft night bed.
+        "kalimba" => {
+            let mut seed = 71042u32;
+            let mut pluck_phase = 0f32;
+            let mut pluck_amp = 0f32;
+            let mut pluck_freq = 440f32;
+            for (index, sample) in samples.iter_mut().enumerate() {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                previous = previous * 0.985 + white * 0.015;
+                // One pluck roughly every 0.9s; pentatonic A-major picks.
+                if seed % 39690 < 2 {
+                    let scale = [220.0, 246.9, 277.2, 329.6, 370.0, 440.0, 554.4];
+                    pluck_freq = scale[(seed % 949) as usize % scale.len()];
+                    pluck_amp = 0.5;
+                    pluck_phase = 0f32;
+                }
+                let pluck = if pluck_amp > 0.001 {
+                    pluck_phase += pluck_freq / RATE as f32;
+                    let decay = pluck_amp * (-3.0 * pluck_phase).exp();
+                    (pluck_phase * std::f32::consts::TAU).sin() * decay
+                } else {
+                    0f32
+                };
+                pluck_amp *= 0.9999;
+                let swell = (index as f32 / RATE as f32 * 0.5 * std::f32::consts::PI).sin() * 0.1 + 0.12;
+                *sample = ((previous * swell + pluck * 0.5) * i16::MAX as f32) as i16;
+            }
+        }
+        // Night: cricket chirps — rhythmic high pulses over dark quiet.
+        "night" => {
+            let mut seed = 60901u32;
+            let mut chirp_phase = 0u32;
+            for (index, sample) in samples.iter_mut().enumerate() {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                previous = previous * 0.995 + white * 0.005;
+                // Three-pulse cricket chirp every ~1.2s.
+                let beat = index % 52920;
+                let pulse = matches!(beat, 0..=2200 | 4400..=6600 | 8800..=11000);
+                chirp_phase = if pulse { chirp_phase.wrapping_add(1) } else { 0 };
+                let cricket = if pulse {
+                    (chirp_phase as f32 * 4200.0 / RATE as f32 * std::f32::consts::TAU).sin() * 0.22
+                } else {
+                    0f32
+                };
+                *sample = ((previous * 0.85 + cricket) * i16::MAX as f32) as i16;
+            }
+        }
+        // Deep: low brown-noise rumble, an octave below the fire bed.
+        _ => {
+            let mut seed = 13091u32;
+            let mut slow = 0f32;
+            for sample in samples.iter_mut() {
+                seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                let white = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                previous = (previous * 0.992 + white * 0.008).clamp(-0.9, 0.9);
+                slow = slow * 0.9995 + previous * 0.0005;
+                *sample = ((previous * 0.35 + slow.abs() * 0.5) * i16::MAX as f32) as i16;
             }
         }
     }

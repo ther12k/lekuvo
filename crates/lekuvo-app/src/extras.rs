@@ -12,6 +12,13 @@ use std::sync::{Arc, Mutex};
 /// One synced-lyrics line: display time + text.
 pub type LyricLine = (i64, String);
 
+/// An art request: `(track key, url)`.
+pub type ArtRequest = (String, String);
+/// An art result: `(track key, bytes)` (empty bytes clear the slot).
+pub type ArtResult = (String, Vec<u8>);
+/// A lyrics request: `(track key, title, artist)`.
+pub type LyricsRequest = (String, String, String);
+
 /// What a lyrics fetch resolves to.
 #[derive(Debug, Clone, Default)]
 pub struct Lyrics {
@@ -22,9 +29,9 @@ pub struct Lyrics {
 /// Spawns the art fetch loop. `requests` carries `(track key, url)`; a
 /// `url` of `""` clears the slot. Results carry the same key so stale
 /// responses for an older track are dropped by the caller.
-pub fn spawn_art() -> (Sender<(String, String)>, Receiver<(String, Vec<u8>)>) {
-    let (tx, rx) = channel::<(String, String)>();
-    let (out_tx, out_rx) = channel::<(String, Vec<u8>)>();
+pub fn spawn_art() -> (Sender<ArtRequest>, Receiver<ArtResult>) {
+    let (tx, rx) = channel::<ArtRequest>();
+    let (out_tx, out_rx) = channel::<ArtResult>();
     std::thread::Builder::new()
         .name("lekuvo-art".into())
         .spawn(move || {
@@ -56,19 +63,19 @@ pub fn spawn_art() -> (Sender<(String, String)>, Receiver<(String, Vec<u8>)>) {
 }
 
 /// Spawns the lyrics fetch loop keyed by track.
-pub fn spawn_lyrics() -> (Sender<(String, String, String)>, Receiver<(String, Lyrics)>) {
-    let (tx, rx) = channel::<(String, String, String)>();
+pub fn spawn_lyrics() -> (Sender<LyricsRequest>, Receiver<(String, Lyrics)>) {
+    let (tx, rx) = channel::<LyricsRequest>();
     let (out_tx, out_rx) = channel::<(String, Lyrics)>();
     let cache: Arc<Mutex<HashMap<String, Lyrics>>> = Arc::new(Mutex::new(HashMap::new()));
     std::thread::Builder::new()
         .name("lekuvo-lyrics".into())
         .spawn(move || {
             for (key, title, artist) in rx {
-                if let Ok(cached) = cache.lock() {
-                    if let Some(lyrics) = cached.get(&key) {
-                        let _ = out_tx.send((key, lyrics.clone()));
-                        continue;
-                    }
+                if let Ok(cached) = cache.lock()
+                    && let Some(lyrics) = cached.get(&key)
+                {
+                    let _ = out_tx.send((key, lyrics.clone()));
+                    continue;
                 }
                 let lyrics = fetch_lyrics(&title, &artist);
                 if let Ok(mut cache) = cache.lock() {

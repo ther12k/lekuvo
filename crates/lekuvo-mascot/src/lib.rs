@@ -719,11 +719,7 @@ pub fn composite(
             for c in 0..3 {
                 let sc = sr[c] as u32 * sa;
                 let dc = dr[c] as u32 * da * (255 - sa) / 255;
-                dr[c] = if out_a == 0 {
-                    0
-                } else {
-                    ((sc + dc) / out_a).min(255) as u8
-                };
+                dr[c] = (sc + dc).checked_div(out_a).unwrap_or(0).min(255) as u8;
             }
             dr[3] = out_a.min(255) as u8;
         }

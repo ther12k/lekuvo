@@ -17,16 +17,20 @@ use velqu_view::{
     VelquView, Viewport,
 };
 
+mod collectors;
 mod extras;
 mod noise;
 
+use collectors::CollectorCmd;
 use lekuvo_host::{Geometry, HostConfig, HostEvent, NotchWindow, Rectangle};
 use lekuvo_mascot::{MoodController, SpriteStore, composite};
 
-/// Window size: the pill plus the fully expanded card, so expanding
-/// never resizes the window (presenting stays a fixed-size blit).
-const WIN_W: u16 = 560;
-const WIN_H: u16 = 430;
+/// Window size: the pill plus the fully expanded card (reference stage:
+/// pill 240-276 wide, card 600x392, hanging mascot included), so
+/// expanding never resizes the window (presenting stays a fixed-size
+/// blit and the silhouette morphs via CSS width/height transitions).
+const WIN_W: u16 = 760;
+const WIN_H: u16 = 560;
 /// Input rectangles grow by this much so edges are not hairline targets.
 const INPUT_PAD: i16 = 6;
 /// Keep-above re-assert cadence (the Layzee-proven value).
@@ -50,8 +54,16 @@ const BREAK_SECONDS: u64 = 5 * 60;
 const LIVE_ROTATE: Duration = Duration::from_millis(3800);
 /// A toast shows for this long before auto-dismissing.
 const TOAST_LINGER: Duration = Duration::from_secs(6);
-/// Water reminder cadence while the pill is visible (demo-nudge).
-const WATER_EVERY: Duration = Duration::from_secs(45 * 60);
+/// AI quota collector cadence (the develop UI polls every 30s; the
+/// collector shells out to python, so this build polls less eagerly).
+const AI_POLL: Duration = Duration::from_secs(60);
+/// Google Home collector cadence.
+const GHOME_POLL: Duration = Duration::from_secs(60);
+/// Calendar month names (local-time mini calendar).
+const MONTHS: [&str; 12] = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+];
 
 // ---------------------------------------------------------------------------
 // Settings
@@ -139,7 +151,7 @@ fn load_settings() -> Settings {
         theme: object
             .and_then(|o| o.get("theme"))
             .and_then(|v| v.as_str())
-            .filter(|name| THEMES.contains(&name))
+            .filter(|name| THEMES.contains(name))
             .unwrap_or("classic")
             .to_owned(),
     }
@@ -272,9 +284,9 @@ fn zone_geometry(zone: &str, workarea: Geometry) -> (i16, i16) {
         _ => workarea.x + (workarea.width.saturating_sub(WIN_W) / 2) as i16,
     };
     let y = match vertical {
-        // Middle zones center the pill row (40px), not the window, so
+        // Middle zones center the pill row (46px), not the window, so
         // the card still has room to open downward inside the window.
-        'm' => workarea.y + (workarea.height.saturating_sub(40) / 2) as i16,
+        'm' => workarea.y + (workarea.height.saturating_sub(46) / 2) as i16,
         'b' => workarea.y + workarea.height.saturating_sub(WIN_H) as i16 - margin,
         _ => workarea.y + margin,
     };
@@ -420,18 +432,236 @@ fn write_focus(view: &mut VelquView, focus: &FocusTimer) {
 
 /// Show a toast with the given copy; resets the linger deadline.
 fn show_toast(view: &mut VelquView, title: &str, sub: &str) {
-    let _ = view.write_state(
-        "toast",
-        ReactiveValue::Object(vec![
-            ("visible".to_owned(), ReactiveValue::Bool(true)),
-            ("title".to_owned(), ReactiveValue::String(title.to_owned())),
-            ("sub".to_owned(), ReactiveValue::String(sub.to_owned())),
-        ]),
-    );
+    show_toast_with_actions(view, title, sub, &[]);
+}
+
+/// Show a toast with up to two action buttons (`label`, `primary`);
+/// the event loop dispatches their ids `toast-act-0` / `toast-act-1`.
+fn show_toast_with_actions(view: &mut VelquView, title: &str, sub: &str, actions: &[(&str, bool)]) {
+    let mut fields = vec![
+        ("visible".to_owned(), ReactiveValue::Bool(true)),
+        ("title".to_owned(), ReactiveValue::String(title.to_owned())),
+        ("sub".to_owned(), ReactiveValue::String(sub.to_owned())),
+    ];
+    for (slot, path_prefix) in [(0, "has0"), (1, "has1")] {
+        if let Some((label, primary)) = actions.get(slot) {
+            fields.push((path_prefix.to_owned(), ReactiveValue::Bool(true)));
+            fields.push((
+                format!("label{slot}"),
+                ReactiveValue::String((*label).to_owned()),
+            ));
+            fields.push((format!("primary{slot}"), ReactiveValue::Bool(*primary)));
+        } else {
+            fields.push((path_prefix.to_owned(), ReactiveValue::Bool(false)));
+            fields.push((format!("label{slot}"), ReactiveValue::String(String::new())));
+            fields.push((format!("primary{slot}"), ReactiveValue::Bool(false)));
+        }
+    }
+    let _ = view.write_state("toast", ReactiveValue::Object(fields));
 }
 
 fn hide_toast(view: &mut VelquView) {
     let _ = view.write_state("toast.visible", ReactiveValue::Bool(false));
+}
+
+/// What the toast's action buttons do when clicked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ToastAction {
+    /// Primary button just dismisses.
+    Dismiss,
+    /// Mark the to-do at this index done (nudge toast).
+    TodoDone(usize),
+    /// Restart the focus timer (break-over toast).
+    FocusStart,
+}
+
+/// A Monday-first mini-calendar month: 42 cells (0 = blank) plus the
+/// index of today's cell when viewing the current month.
+fn write_calendar(view: &mut VelquView, month_offset: i32) {
+    unsafe {
+        let now = libc::time(std::ptr::null_mut());
+        let mut tm: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&now, &mut tm);
+        let mut year = tm.tm_year + 1900;
+        let mut month0 = tm.tm_mon + month_offset;
+        year += month0.div_euclid(12);
+        month0 = month0.rem_euclid(12);
+
+        let days_in_month: i64 = match month0 {
+            0 | 2 | 4 | 6 | 7 | 9 | 11 => 31,
+            3 | 5 | 8 | 10 => 30,
+            // Gregorian leap rule.
+            1 => {
+                let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+                if leap {
+                    29
+                } else {
+                    28
+                }
+            }
+            _ => 30,
+        };
+
+        // Weekday of the 1st: mktime normalizes the placeholder day out.
+        let mut first: libc::tm = std::mem::zeroed();
+        first.tm_year = year - 1900;
+        first.tm_mon = month0;
+        first.tm_mday = 1;
+        first.tm_hour = 12;
+        let stamp = libc::mktime(&mut first);
+        let mut wd: libc::tm = std::mem::zeroed();
+        libc::localtime_r(&stamp, &mut wd);
+        let lead = (wd.tm_wday + 6) % 7; // Monday = 0
+
+        let mut cells: Vec<ReactiveValue> = Vec::with_capacity(42);
+        for _ in 0..lead {
+            cells.push(ReactiveValue::Number(0.0));
+        }
+        for day in 1..=days_in_month {
+            cells.push(ReactiveValue::Number(day as f64));
+        }
+        while cells.len() < 42 {
+            cells.push(ReactiveValue::Number(0.0));
+        }
+        // Today's cell only highlights on the real month.
+        let today: f64 = if month_offset == 0 {
+            (lead + tm.tm_mday as i32 - 1) as f64
+        } else {
+            -1.0
+        };
+
+        let _ = view.write_state(
+            "cal.month",
+            ReactiveValue::String(format!("{} {}", MONTHS[month0 as usize], year)),
+        );
+        let _ = view.write_state("cal.days", ReactiveValue::Array(cells));
+        let _ = view.write_state("cal.today", ReactiveValue::Number(today));
+    }
+}
+
+/// Pushes collector AI results into the document (up to 4 quota rows).
+fn write_ai_state(view: &mut VelquView, raw: &serde_json::Value) {
+    let accounts = collectors::ai_accounts(raw);
+    let write = |view: &mut VelquView, slot: usize, account: Option<&collectors::AiAccount>| {
+        let (name, short, pct, color, reset) = match account {
+            Some(a) => (
+                a.name.clone(),
+                a.short.clone(),
+                a.used_pct.round(),
+                collectors::used_color(a.used_pct).to_owned(),
+                a.reset.clone().unwrap_or_else(|| "no reset window".to_owned()),
+            ),
+            None => (
+                String::new(),
+                String::new(),
+                0.0,
+                "#86E3C3".to_owned(),
+                String::new(),
+            ),
+        };
+        let _ = view.write_state(&format!("ai.a{slot}.name"), ReactiveValue::String(name));
+        let _ = view.write_state(&format!("ai.a{slot}.short"), ReactiveValue::String(short));
+        let _ = view.write_state(&format!("ai.a{slot}.pct"), ReactiveValue::Number(pct));
+        let _ = view.write_state(&format!("ai.a{slot}.color"), ReactiveValue::String(color));
+        let _ = view.write_state(&format!("ai.a{slot}.reset"), ReactiveValue::String(reset));
+    };
+    let _ = view.write_state("ai.has", ReactiveValue::Bool(true));
+    let _ = view.write_state(
+        "ai.text",
+        ReactiveValue::String(collectors::ai_summary(raw)),
+    );
+    let _ = view.write_state("ai.error", ReactiveValue::String(String::new()));
+    let _ = view.write_state(
+        "ai.count",
+        ReactiveValue::Number(accounts.len() as f64),
+    );
+    for slot in 0..4usize {
+        write(view, slot, accounts.get(slot));
+    }
+}
+
+/// Collector failure: surface it in the AI panel, keep old rows hidden.
+fn write_ai_error(view: &mut VelquView, error: &str) {
+    let _ = view.write_state("ai.has", ReactiveValue::Bool(false));
+    let _ = view.write_state("ai.error", ReactiveValue::String(error.to_owned()));
+}
+
+/// Pushes ghome status into the document (up to 8 device rows).
+fn write_ghome_state(view: &mut VelquView, raw: &serde_json::Value) {
+    let status = collectors::ghome_status(raw);
+    let _ = view.write_state("home.has", ReactiveValue::Bool(true));
+    let _ = view.write_state("home.error", ReactiveValue::String(String::new()));
+    let _ = view.write_state("home.live", ReactiveValue::Bool(status.live));
+    let _ = view.write_state("home.active", ReactiveValue::Number(status.active as f64));
+    let _ = view.write_state("home.total", ReactiveValue::Number(status.total as f64));
+    for slot in 0..8usize {
+        let (id, name, room, kind, on, offline) = match status.devices.get(slot) {
+            Some(d) => (
+                d.id.clone(),
+                d.name.clone(),
+                d.room.clone(),
+                d.kind.clone(),
+                d.on,
+                d.offline,
+            ),
+            None => (
+                String::new(),
+                String::new(),
+                String::new(),
+                "switch".to_owned(),
+                false,
+                false,
+            ),
+        };
+        let _ = view.write_state(&format!("home.d{slot}.id"), ReactiveValue::String(id));
+        let _ = view.write_state(&format!("home.d{slot}.name"), ReactiveValue::String(name));
+        let _ = view.write_state(&format!("home.d{slot}.room"), ReactiveValue::String(room));
+        let _ = view.write_state(&format!("home.d{slot}.kind"), ReactiveValue::String(kind));
+        let _ = view.write_state(&format!("home.d{slot}.on"), ReactiveValue::Bool(on));
+        let _ = view.write_state(&format!("home.d{slot}.offline"), ReactiveValue::Bool(offline));
+    }
+}
+
+/// Disarms the exit confirmation (card closed or collapsed).
+fn disarm_exit(view: &mut VelquView, armed: &mut bool) {
+    if *armed {
+        *armed = false;
+        let _ = view.write_state("exit.armed", ReactiveValue::Bool(false));
+    }
+}
+
+/// Flips a boolean state path (system chips) and marks the frame dirty.
+fn toggle_state(view: &mut VelquView, path: &str, dirty: &mut bool) {
+    let next = view
+        .reactive_state()
+        .map(|state| !state.get_path(path).truthy())
+        .unwrap_or(true);
+    let _ = view.write_state(path, ReactiveValue::Bool(next));
+    *dirty = true;
+}
+
+/// All-on / all-off: one toggle command per known device row.
+fn send_ghome_all(view: &mut VelquView, collectors: &collectors::Collectors, action: &str) {
+    if !collectors.available {
+        return;
+    }
+    if let Some(state) = view.reactive_state() {
+        for slot in 0..8usize {
+            if let ReactiveValue::String(device_id) = state.get_path(&format!("home.d{slot}.id"))
+                && !device_id.is_empty()
+            {
+                let _ = collectors.cmd_tx.send(CollectorCmd::Ghome {
+                    action: Some(action.to_owned()),
+                    id: Some(device_id),
+                });
+            }
+        }
+    }
+}
+
+/// Collector failure: surface it in the Home panel.
+fn write_ghome_error(view: &mut VelquView, error: &str) {
+    let _ = view.write_state("home.error", ReactiveValue::String(error.to_owned()));
 }
 
 /// Registers the bundled UI fonts (SIL OFL 1.1, see app/fonts/). Outfit
@@ -490,9 +720,192 @@ fn apply_theme(
     Ok(())
 }
 
+/// Offline scene capture: renders the canonical UI states to PNGs
+/// without creating any window. Enabled with
+/// `LEKUVO_SNAPSHOT_HEADLESS=<out-dir>`; writes `pill.png`, `music.png`,
+/// `system.png`, and `dusk.png`, then exits. Mascot frames composite the
+/// same way the live loop does, so the captures match the real UI.
+fn run_headless_snapshots(
+    app_dir: &Path,
+    mascot_dir: &Path,
+    settings: &Settings,
+    out_dir: &Path,
+) -> ! {
+    std::fs::create_dir_all(out_dir).expect("snapshot output dir");
+    let mut view = VelquView::new();
+    view.enable_tailwind();
+    view.enable_reactive();
+    view.set_asset_resolver(Rc::new(DirAssets {
+        root: app_dir.to_path_buf(),
+        art_path: settings_art_cache(),
+    }));
+    let html = std::fs::read_to_string(app_dir.join("index.html"))
+        .unwrap_or_else(|error| panic!("read {}: {error}", app_dir.join("index.html").display()));
+    view.load_document(
+        DocumentSource::new("lekuvo", html).with_base(app_dir.to_string_lossy().to_string()),
+    )
+    .expect("document loads");
+    let mut stylesheets: Vec<PathBuf> = std::fs::read_dir(app_dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|path| path.extension().is_some_and(|ext| ext == "css"))
+        .filter(|path| {
+            !path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with("theme-"))
+        })
+        .collect();
+    stylesheets.sort();
+    for path in &stylesheets {
+        let css = std::fs::read_to_string(path).unwrap_or_default();
+        let _ = view.load_stylesheet(StylesheetSource::new(
+            path.file_name().unwrap_or_default().to_string_lossy().to_string(),
+            css,
+        ));
+    }
+    for diagnostic in view.css_diagnostics() {
+        eprintln!("lekuvo: css: {diagnostic}");
+    }
+    for diagnostic in view.tailwind_diagnostics() {
+        eprintln!("lekuvo: tailwind: {diagnostic}");
+    }
+    for diagnostic in view.reactive_diagnostics() {
+        eprintln!("lekuvo: reactive: {diagnostic}");
+    }
+    register_fonts(&mut view, app_dir);
+    let mut sprites = SpriteStore::load(mascot_dir)
+        .map_err(|e| eprintln!("lekuvo: {e}"))
+        .ok();
+    let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).expect("viewport");
+    let moods = MoodController::new();
+
+    let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
+    write_calendar(&mut view, 0);
+    if let Err(error) = apply_theme(&mut view, &mut sprites, app_dir, &settings.theme) {
+        eprintln!("lekuvo: cannot apply theme: {error}");
+    }
+
+    let capture = |view: &mut VelquView,
+                   sprites: &Option<SpriteStore>,
+                   moods: &MoodController,
+                   name: &str| {
+        view.pump_reactive(&[]);
+        // Settle finite transitions before capturing: the tab buttons
+        // swap their fill via `transition-colors`, so a render right
+        // after the state change would still paint the previous tab.
+        // Transitions only progress when a render recomputes styles, so
+        // settle like the live loop (small steps, render between) rather
+        // than one large clock jump. Infinite keyframes just advance.
+        for _ in 0..24 {
+            view.step_animations_by(Duration::from_millis(50));
+            let _ = view.render(viewport);
+        }
+        let Ok(result) = view.render(viewport) else {
+            eprintln!("lekuvo: snapshot {name}: render failed");
+            return;
+        };
+        let mut frame: Vec<u8> = result.frame.pixels().to_vec();
+        if let Some(sprites) = sprites.as_ref()
+            && let Ok(facts) = view.layout_facts(viewport)
+        {
+            for fact in &facts.nodes {
+                let variant = match fact.fixture_id.as_str() {
+                    "mascot-compact" | "mascot-toast" => "compact",
+                    "mascot-full" | "mascot-mirror" => "full",
+                    _ => continue,
+                };
+                if let Some((rgba, sw, sh)) = sprites.frame(moods.mood(), variant, 0) {
+                    composite(
+                        &mut frame,
+                        WIN_W as u32,
+                        (
+                            fact.x as u32,
+                            fact.y as u32,
+                            fact.width as u32,
+                            fact.height as u32,
+                        ),
+                        rgba,
+                        sw,
+                        sh,
+                    );
+                }
+            }
+        }
+        let path = out_dir.join(format!("{name}.png"));
+        match image::save_buffer(&path, &frame, WIN_W as u32, WIN_H as u32, image::ColorType::Rgba8)
+        {
+            Ok(()) => println!("lekuvo: snapshot {}", path.display()),
+            Err(error) => eprintln!("lekuvo: snapshot {name}: {error}"),
+        }
+        if std::env::var_os("LEKUVO_SNAPSHOT_DEBUG").is_some()
+            && let Ok(facts) = view.layout_facts(viewport)
+        {
+            for fact in &facts.nodes {
+                if !fact.fixture_id.is_empty() {
+                    eprintln!(
+                        "lekuvo: fact {} {} at ({:.0},{:.0}) {}x{} pad={:?} mar={:?} disp={}",
+                        fact.fixture_id,
+                        fact.tag,
+                        fact.x,
+                        fact.y,
+                        fact.width,
+                        fact.height,
+                        fact.padding,
+                        fact.margin,
+                        fact.display
+                    );
+                }
+            }
+        }
+    };
+
+    // Scene: default idle pill.
+    capture(&mut view, &sprites, &moods, "pill");
+
+    // Scene: expanded music tab with a playing track.
+    let _ = view.write_state("expanded", ReactiveValue::Bool(true));
+    let _ = view.write_state("tab", ReactiveValue::String("music".to_owned()));
+    let _ = view.write_state("hasMedia", ReactiveValue::Bool(true));
+    let _ = view.write_state(
+        "media",
+        ReactiveValue::Object(vec![
+            ("playing".to_owned(), ReactiveValue::Bool(true)),
+            ("title".to_owned(), ReactiveValue::String("Neon Bubblegum".to_owned())),
+            ("artist".to_owned(), ReactiveValue::String("Lola Waves".to_owned())),
+            ("pos".to_owned(), ReactiveValue::String("1:12".to_owned())),
+            ("left".to_owned(), ReactiveValue::String("-2:40".to_owned())),
+            ("pct".to_owned(), ReactiveValue::Number(37.0)),
+            ("dur".to_owned(), ReactiveValue::Number(192_000_000.0)),
+        ]),
+    );
+    capture(&mut view, &sprites, &moods, "music");
+
+    // Scene: expanded system tab (with the mini calendar).
+    let _ = view.write_state("tab", ReactiveValue::String("system".to_owned()));
+    write_calendar(&mut view, 0);
+    capture(&mut view, &sprites, &moods, "system");
+
+    // Scene: dusk theme over the expanded music tab.
+    match apply_theme(&mut view, &mut sprites, app_dir, "dusk") {
+        Ok(()) => {
+            let _ = view.write_state("tab", ReactiveValue::String("music".to_owned()));
+            capture(&mut view, &sprites, &moods, "dusk");
+        }
+        Err(error) => eprintln!("lekuvo: snapshot dusk: {error}"),
+    }
+    std::process::exit(0);
+}
+
 fn main() {
     let (app_dir, mascot_dir) = discover_resources();
     let mut settings = load_settings();
+
+    // Offline capture mode: render the canonical scenes and exit before
+    // any window exists (CI / design-diff tooling).
+    if let Some(out_dir) = std::env::var_os("LEKUVO_SNAPSHOT_HEADLESS") {
+        run_headless_snapshots(&app_dir, &mascot_dir, &settings, Path::new(&out_dir));
+    }
 
     // --- VelquView document ------------------------------------------------
     let mut view = VelquView::new();
@@ -550,10 +963,17 @@ fn main() {
     view.render(viewport).expect("first render");
     view.pump_reactive(&[]);
 
-    // --- Media + mascot ----------------------------------------------------
+    // --- Media + collectors + mascot ---------------------------------------
     let media = lekuvo_media::spawn();
     let (art_tx, art_rx) = extras::spawn_art();
     let (lyrics_tx, lyrics_rx) = extras::spawn_lyrics();
+    // AI quota + Google Home collectors (python sidecars, off-thread).
+    let collectors = collectors::spawn(&app_dir);
+    if !collectors.available {
+        eprintln!("lekuvo: collectors not found; AI and Home panels stay empty");
+    }
+    let mut last_ai_poll = Instant::now() - AI_POLL;
+    let mut last_ghome_poll = Instant::now() - GHOME_POLL;
     let mut moods = MoodController::new();
     moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
 
@@ -655,16 +1075,18 @@ fn main() {
     let mut has_media_state = false;
     // Album art + synced lyrics state (keyed by track).
     let mut track_key = String::new();
-    let mut has_art = false;
     let mut lyric_lines: Vec<(i64, String)> = Vec::new();
     let mut running = true;
     let mut focus = FocusTimer::default();
     let mut toast_deadline: Option<Instant> = None;
+    let mut toast_action: Option<ToastAction> = None;
     let mut last_live_rotate = Instant::now();
     let mut live_tick: usize = 0;
     let mut live: &'static str = "idle";
-    let mut last_water_nudge = Instant::now();
+    let mut exit_armed = false;
+    let mut cal_offset: i32 = 0;
     write_focus(&mut view, &focus);
+    write_calendar(&mut view, cal_offset);
     let debug_mode = std::env::var_os("LEKUVO_DEBUG").is_some();
     let mut debug_events: Vec<String> = Vec::new();
 
@@ -716,8 +1138,8 @@ fn main() {
                     if let (true, Some((axr, ayr, wx, wy))) = (dragging, press_anchor) {
                         // Root-coordinate math: window-relative coordinates
                         // lag the window's own configure requests.
-                        let nx = wx + (rx - axr as f32) as i16;
-                        let ny = wy + (ry - ayr as f32) as i16;
+                        let nx = wx + (rx - axr) as i16;
+                        let ny = wy + (ry - ayr) as i16;
                         let _ = win.move_window(nx, ny);
                         window_at = (nx, ny);
                     } else {
@@ -911,7 +1333,6 @@ fn main() {
                     );
                     let _ = view.write_state("hasMedia", ReactiveValue::Bool(false));
                     has_media_state = false;
-                    has_art = false;
                     track_key = String::new();
                     lyric_lines = Vec::new();
                     let _ = view.write_state("lyrics.has", ReactiveValue::Bool(false));
@@ -931,12 +1352,11 @@ fn main() {
             if key != track_key {
                 continue; // stale fetch for a previous track
             }
-            if bytes.is_empty() {
-                has_art = false;
-                std::fs::remove_file(&art_path).ok();
-            } else {
+            let has_art = !bytes.is_empty();
+            if has_art {
                 std::fs::write(&art_path, &bytes).ok();
-                has_art = true;
+            } else {
+                std::fs::remove_file(&art_path).ok();
             }
             view.clear_images();
             let _ = view.write_state("hasArt", ReactiveValue::Bool(has_art));
@@ -964,16 +1384,25 @@ fn main() {
             }
             dirty = true;
             if let Some(phase) = focus.tick() {
-                let (title, sub) = match phase {
-                    FocusPhase::FocusDone => (
-                        "Session done! Take 5 🎉",
-                        "Lekuvo says: stretch those legs.",
-                    ),
-                    FocusPhase::BreakDone => {
-                        ("Break over. Ready for round 2?", "Press Start when you are.")
+                match phase {
+                    FocusPhase::FocusDone => {
+                        show_toast(
+                            &mut view,
+                            "Session done! Take 5 🎉",
+                            "Lekuvo says: stretch those legs.",
+                        );
+                        toast_action = Some(ToastAction::Dismiss);
                     }
-                };
-                show_toast(&mut view, title, sub);
+                    FocusPhase::BreakDone => {
+                        show_toast_with_actions(
+                            &mut view,
+                            "Break over. Ready for round 2?",
+                            "Press Start when you are.",
+                            &[("Start round 2", true)],
+                        );
+                        toast_action = Some(ToastAction::FocusStart);
+                    }
+                }
                 toast_deadline = Some(now + TOAST_LINGER);
                 moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
             }
@@ -1064,13 +1493,25 @@ fn main() {
             dirty = true;
         }
 
-        // Water nudge: a periodic hydration reminder (demo toast source).
-        if now.duration_since(last_water_nudge) >= WATER_EVERY {
-            last_water_nudge = now;
-            if toast_deadline.is_none() {
-                show_toast(&mut view, "Drink water!", "Stay hydrated — Lekuvo cares.");
-                toast_deadline = Some(now + TOAST_LINGER);
-                moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
+        // Collector cadence + results: AI quotas and Google Home devices.
+        if collectors.available {
+            if now.duration_since(last_ai_poll) >= AI_POLL {
+                last_ai_poll = now;
+                let _ = collectors.cmd_tx.send(CollectorCmd::Ai);
+            }
+            if now.duration_since(last_ghome_poll) >= GHOME_POLL {
+                last_ghome_poll = now;
+                let _ = collectors.cmd_tx.send(CollectorCmd::Ghome { action: None, id: None });
+            }
+            while let Ok(message) = collectors.msg_rx.try_recv() {
+                match message {
+                    collectors::CollectorMsg::Ai(Ok(raw)) => write_ai_state(&mut view, &raw),
+                    collectors::CollectorMsg::Ai(Err(error)) => write_ai_error(&mut view, &error),
+                    collectors::CollectorMsg::Ghome(Ok(raw)) => write_ghome_state(&mut view, &raw),
+                    collectors::CollectorMsg::Ghome(Err(error)) => {
+                        write_ghome_error(&mut view, &error)
+                    }
+                }
                 dirty = true;
             }
         }
@@ -1089,10 +1530,12 @@ fn main() {
         if hover_deadline.is_some_and(|deadline| now >= deadline) && !pinned_now {
             hover_deadline = None;
             let _ = view.write_state("expanded", ReactiveValue::Bool(false));
+            disarm_exit(&mut view, &mut exit_armed);
             dirty = true;
         }
         if expanded && !pinned_now && now.duration_since(last_activity) >= COLLAPSE_AFTER {
             let _ = view.write_state("expanded", ReactiveValue::Bool(false));
+            disarm_exit(&mut view, &mut exit_armed);
             dirty = true;
         }
         if settings.auto_hide
@@ -1165,6 +1608,194 @@ fn main() {
                         write_focus(&mut view, &focus);
                         dirty = true;
                     }
+                    Some("btn-focus-skip") => {
+                        // Demo jump: land on the last 3 seconds, running.
+                        focus.left = 3;
+                        focus.running = true;
+                        write_focus(&mut view, &focus);
+                        dirty = true;
+                    }
+                    Some("btn-focus-mode-focus") => {
+                        focus.mode_focus = true;
+                        focus.reset();
+                        write_focus(&mut view, &focus);
+                        dirty = true;
+                    }
+                    Some("btn-focus-mode-break") => {
+                        focus.mode_focus = false;
+                        focus.reset();
+                        write_focus(&mut view, &focus);
+                        dirty = true;
+                    }
+                    Some(id) if id.starts_with("nudge-") => {
+                        // Todo nudge: a toast with Done / Snooze actions.
+                        if let Ok(index) = id.trim_start_matches("nudge-").parse::<usize>()
+                            && index < 3
+                            && let Some(state) = view.reactive_state()
+                            && let ReactiveValue::Array(items) = state.get_path("todos")
+                            && index < items.len()
+                            && let ReactiveValue::Object(fields) = &items[index]
+                            && let Some(ReactiveValue::String(text)) =
+                                fields.iter().find(|(key, _)| key == "text").map(|(_, v)| v)
+                        {
+                            let text = text.clone();
+                            show_toast_with_actions(
+                                &mut view,
+                                &text,
+                                "Due right now. Lekuvo is poking you.",
+                                &[("Done", true), ("Snooze", false)],
+                            );
+                            toast_action = Some(ToastAction::TodoDone(index));
+                            toast_deadline = Some(now + TOAST_LINGER);
+                            moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
+                            dirty = true;
+                        }
+                    }
+                    Some("toast-act-0") | Some("toast-act-1") => {
+                        let primary = target.id.as_deref() == Some("toast-act-0");
+                        match (primary, toast_action) {
+                            // "Done" on a nudge toast: check the todo off.
+                            (true, Some(ToastAction::TodoDone(index))) => {
+                                if let Some(state) = view.reactive_state()
+                                    && let velqu_view::ReactiveValue::Array(items) =
+                                        state.get_path("todos")
+                                    && index < items.len()
+                                {
+                                    let mut next = items.to_vec();
+                                    if let ReactiveValue::Object(fields) = &mut next[index] {
+                                        for (key, value) in fields.iter_mut() {
+                                            if key == "done" {
+                                                *value = ReactiveValue::Bool(true);
+                                            }
+                                        }
+                                    }
+                                    let _ =
+                                        view.write_state("todos", ReactiveValue::Array(next));
+                                }
+                                show_toast(
+                                    &mut view,
+                                    "Checked off. Nice!",
+                                    "Lekuvo approves.",
+                                );
+                                toast_deadline = Some(now + TOAST_LINGER);
+                            }
+                            // "Start round 2" on the break-over toast.
+                            (true, Some(ToastAction::FocusStart)) => {
+                                focus.mode_focus = true;
+                                focus.reset();
+                                focus.running = true;
+                                write_focus(&mut view, &focus);
+                                moods.trigger(lekuvo_mascot::AppEvent::FocusStart);
+                            }
+                            // "Done"/"Start round 2" with nothing armed, or
+                            // any secondary ("Snooze") click: just dismiss.
+                            _ => {
+                                toast_action = None;
+                                toast_deadline = None;
+                                hide_toast(&mut view);
+                            }
+                        }
+                        dirty = true;
+                    }
+                    Some("toast") => {
+                        // Clicking a toast dismisses it.
+                        toast_action = None;
+                        toast_deadline = None;
+                        hide_toast(&mut view);
+                        dirty = true;
+                    }
+                    Some("btn-exit") => {
+                        // Confirm-to-quit: the first click arms the button,
+                        // the second leaves (settings saved below).
+                        if exit_armed {
+                            save_settings(&settings);
+                            running = false;
+                        } else {
+                            exit_armed = true;
+                            let _ =
+                                view.write_state("exit.armed", ReactiveValue::Bool(true));
+                            dirty = true;
+                        }
+                    }
+                    Some("btn-close") => {
+                        disarm_exit(&mut view, &mut exit_armed);
+                    }
+                    Some("chip-wifi") => {
+                        toggle_state(&mut view, "sys.wifi", &mut dirty);
+                    }
+                    Some("chip-bt") => {
+                        toggle_state(&mut view, "sys.bt", &mut dirty);
+                    }
+                    Some("chip-dnd") => {
+                        toggle_state(&mut view, "sys.dnd", &mut dirty);
+                    }
+                    Some("chip-dark") => {
+                        toggle_state(&mut view, "sys.dark", &mut dirty);
+                    }
+                    Some("cal-prev") => {
+                        cal_offset -= 1;
+                        write_calendar(&mut view, cal_offset);
+                        dirty = true;
+                    }
+                    Some("cal-next") => {
+                        cal_offset += 1;
+                        write_calendar(&mut view, cal_offset);
+                        dirty = true;
+                    }
+                    Some("tab-ai") | Some("btn-ai-refresh") => {
+                        if collectors.available {
+                            let _ = collectors.cmd_tx.send(CollectorCmd::Ai);
+                            last_ai_poll = now;
+                        }
+                    }
+                    Some("tab-home") | Some("btn-ghome-refresh") => {
+                        if collectors.available {
+                            let _ = collectors
+                                .cmd_tx
+                                .send(CollectorCmd::Ghome { action: None, id: None });
+                            last_ghome_poll = now;
+                        }
+                    }
+                    Some(id) if id.starts_with("ghome-") => {
+                        // Row toggles: index selects the flattened device;
+                        // ids ride along in state at home.dN.id.
+                        if let Ok(index) = id.trim_start_matches("ghome-").parse::<usize>()
+                            && index < 8
+                            && collectors.available
+                            && let Some(state) = view.reactive_state()
+                            && let ReactiveValue::String(device_id) =
+                                state.get_path(&format!("home.d{index}.id"))
+                            && !device_id.is_empty()
+                        {
+                            let _ = collectors.cmd_tx.send(CollectorCmd::Ghome {
+                                action: Some("toggle".to_owned()),
+                                id: Some(device_id),
+                            });
+                        }
+                    }
+                    Some("btn-ghome-all-on") => {
+                        send_ghome_all(&mut view, &collectors, "on");
+                    }
+                    Some("btn-ghome-all-off") => {
+                        send_ghome_all(&mut view, &collectors, "off");
+                    }
+                    Some("btn-mirror") => {
+                        show_toast(
+                            &mut view,
+                            "Camera check",
+                            "Mirror needs camera access — coming soon.",
+                        );
+                        toast_action = Some(ToastAction::Dismiss);
+                        toast_deadline = Some(now + TOAST_LINGER);
+                        moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
+                        dirty = true;
+                    }
+                    Some("btn-board-clear") => {
+                        show_toast(&mut view, "Board is empty", "Nothing to clear yet.");
+                        toast_action = Some(ToastAction::Dismiss);
+                        toast_deadline = Some(now + TOAST_LINGER);
+                        dirty = true;
+                    }
                     Some(id) if id.starts_with("theme-") => {
                         let name = id.trim_start_matches("theme-");
                         if THEMES.contains(&name) && settings.theme != name {
@@ -1197,12 +1828,6 @@ fn main() {
                             let _ = view.write_state("todos", ReactiveValue::Array(next));
                             dirty = true;
                         }
-                    }
-                    Some("toast") => {
-                        // Clicking a toast dismisses it.
-                        toast_deadline = None;
-                        hide_toast(&mut view);
-                        dirty = true;
                     }
                     Some("pill") => {
                         // Pin toggle: a pinned card ignores hover-leave
@@ -1261,26 +1886,25 @@ fn main() {
                 frame_buffer.extend_from_slice(result.frame.pixels());
                 if let Some(sprites) = sprites.as_ref()
                     && !is_tucked
+                    && let Ok(facts) = view.layout_facts(viewport)
                 {
-                    if let Ok(facts) = view.layout_facts(viewport) {
-                        for fact in &facts.nodes {
-                            let variant = match fact.fixture_id.as_str() {
-                                "mascot-compact" | "mascot-toast" => "compact",
-                                "mascot-full" => "full",
-                                _ => continue,
-                            };
-                            if let Some((rgba, sw, sh)) =
-                                sprites.frame(moods.mood(), variant, mascot_elapsed)
-                            {
-                                composite(
-                                    &mut frame_buffer,
-                                    WIN_W as u32,
-                                    (fact.x as u32, fact.y as u32, fact.width as u32, fact.height as u32),
-                                    rgba,
-                                    sw,
-                                    sh,
-                                );
-                            }
+                    for fact in &facts.nodes {
+                        let variant = match fact.fixture_id.as_str() {
+                            "mascot-compact" | "mascot-toast" => "compact",
+                            "mascot-full" | "mascot-mirror" => "full",
+                            _ => continue,
+                        };
+                        if let Some((rgba, sw, sh)) =
+                            sprites.frame(moods.mood(), variant, mascot_elapsed)
+                        {
+                            composite(
+                                &mut frame_buffer,
+                                WIN_W as u32,
+                                (fact.x as u32, fact.y as u32, fact.width as u32, fact.height as u32),
+                                rgba,
+                                sw,
+                                sh,
+                            );
                         }
                     }
                 }
@@ -1436,6 +2060,14 @@ fn input_rects(view: &mut VelquView, viewport: Viewport, mode: InputMode) -> Vec
             }
             if let Some(pill) = fact_rect("pill") {
                 rects.push(pill);
+            }
+            // The hanging mascot overhangs the card (reference behavior:
+            // the hit area includes him), and the mirror frame hosts a
+            // sprite slot too.
+            for fixture in ["mascot-full", "mascot-mirror"] {
+                if let Some(rect) = fact_rect(fixture) {
+                    rects.push(rect);
+                }
             }
             rects.extend(toast_rect);
             rects

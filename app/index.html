@@ -5,6 +5,25 @@
   <title>Lekuvo</title>
 </head>
 <body style="margin:0">
+  <!--
+    VelquView port of the proven develop-branch Tauri notch UI
+    (desktop/src/components/notch/{NotchOverlay,panels,data}).
+
+    Layout/spacing/typography are velqu-tailwind utilities; reference
+    palette colors that are not compiler tokens (notch navy #1F2550,
+    butter #F8D77B, per-tab accents) stay in the `lk-*` semantic classes
+    (theme-*.css re-skins them at runtime) or static inline styles.
+
+    `:class`/`:style` bindings REPLACE the element's class/style
+    attribute, so every ternary branch repeats the full list (the
+    established pattern in this document).
+
+    Host-dispatched controls (ids the lekuvo event loop switches on)
+    carry the id on every covered child node too — clicks hit the
+    deepest node, and the host dispatch matches the raw pressed node's
+    id, not the reactive ancestor chain. Duplicate ids on nested nodes
+    are deliberate.
+  -->
   <main
     id="root"
     vx-state="{
@@ -12,369 +31,893 @@
       tucked: false,
       pinned: false,
       clock: '--:--',
-      hasMedia: false,
-      media: { playing: false, title: 'Nothing playing', artist: '' },
       zone: 'tc',
       tab: 'music',
       live: 'idle',
       theme: 'classic',
+      hasMedia: false,
+      media: { playing: false, title: 'Nothing playing', artist: '', pos: '0:00', left: '-0:00', pct: 0, dur: 0 },
       hasArt: false,
       lyrics: { has: false, l0: '', l1: '', l2: '', l3: '', l4: '', c0: false, c1: false, c2: false, c3: false, c4: false },
-      noise: { rain: false, waves: false, fire: false, wind: false },
+      noise: { rain: false, forest: false, waves: false, kalimba: false, fire: false, wind: false, night: false, deep: false },
       focus: { clock: '25:00', pct: 0, running: false, mode: 'focus', sessions: 0 },
-      toast: { visible: false, title: '', sub: '' },
+      toast: { visible: false, title: '', sub: '', has0: false, label0: '', primary0: false, has1: false, label1: '', primary1: false },
       todos: [
-        { done: false, text: 'Drink water' },
-        { done: false, text: 'Reply to Sarah' },
-        { done: true, text: 'Ship the notch' }
-      ]
+        { done: false, text: 'Drink water', time: '15:00' },
+        { done: false, text: 'Reply to Sarah', time: '17:30' },
+        { done: true, text: 'Ship the notch', time: '23:59' }
+      ],
+      exit: { armed: false },
+      sys: { wifi: true, bt: false, dnd: false, dark: false },
+      cal: { month: '', days: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], today: -1 },
+      ai: {
+        has: false, text: '', error: '', count: 0,
+        a0: { name: '', short: '', pct: 0, color: '#86E3C3', reset: '' },
+        a1: { name: '', short: '', pct: 0, color: '#86E3C3', reset: '' },
+        a2: { name: '', short: '', pct: 0, color: '#86E3C3', reset: '' },
+        a3: { name: '', short: '', pct: 0, color: '#86E3C3', reset: '' }
+      },
+      home: {
+        has: false, error: '', live: false, active: 0, total: 0,
+        d0: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
+        d1: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
+        d2: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
+        d3: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
+        d4: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
+        d5: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
+        d6: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
+        d7: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false }
+      }
     }"
-    style="width:560px;height:430px"
+    style="width:760px;height:560px"
     :class="zone === 'bl' || zone === 'bc' || zone === 'br'
-      ? 'flex flex-col-reverse justify-start items-center'
-      : 'flex flex-col justify-start items-center'"
+      ? 'flex flex-col-reverse justify-start items-center select-none'
+      : 'flex flex-col justify-start items-center select-none'"
   >
-    <!-- The pill: mascot, live activity, clock, grip. -->
+    <!-- ══════════ idle pill (navy, 240/256/276 x 46, hover expands) ══════════ -->
     <div
       id="pill"
       data-vv-test="pill"
-      class="lk-surface lk-pill flex items-center gap-2.5 h-12 pl-2 pr-3.5 text-slate-100 transition duration-500"
+      class="lk-surface flex items-center gap-2.5 h-[46px] pl-2 pr-2 rounded-[22px] text-white transition duration-500 cursor-pointer"
+      :style="'width:' + (live === 'music' ? 276 : live === 'focus' ? 256 : 240) + 'px'"
       :class="tucked
-        ? 'lk-surface lk-pill flex items-center gap-2.5 h-12 pl-2 pr-3.5 text-slate-100 transition duration-500 opacity-0'
-        : 'lk-surface lk-pill flex items-center gap-2.5 h-12 pl-2 pr-3.5 text-slate-100 transition duration-500 opacity-100'"
+        ? 'lk-surface flex items-center gap-2.5 h-[46px] pl-2 pr-2 rounded-[22px] text-white transition duration-500 cursor-pointer opacity-0'
+        : 'lk-surface flex items-center gap-2.5 h-[46px] pl-2 pr-2 rounded-[22px] text-white transition duration-500 cursor-pointer opacity-100'"
       @click="pinned = !pinned"
     >
-      <div id="mascot-compact" data-vv-test="mascot-compact" class="w-11 h-11 shrink-0"></div>
-      <span id="divider" data-vv-test="divider" class="w-px h-5 shrink-0" style="background-color:#FFFFFF1F"></span>
+      <div id="pill" data-vv-test="mascot-compact" class="w-11 h-11 shrink-0"></div>
+      <div id="pill" data-vv-test="divider" class="w-px h-6 shrink-0 bg-white/15"></div>
 
-      <!-- Live activity label + focus progress -->
-      <div id="live-col" data-vv-test="live-col" class="flex flex-col justify-center min-w-0" style="width:150px">
-        <div class="flex items-center gap-2 min-w-0">
-          <span
-            id="live-label"
-            class="lk-nowrap lk-display lk-tabular text-sm font-semibold text-slate-200"
+      <div id="pill" data-vv-test="live-col" class="flex flex-col justify-center min-w-0" style="width:135px">
+        <div id="pill" data-vv-test="live-row" class="flex items-center gap-2 min-w-0">
+          <div
+            id="pill"
+            data-vv-test="live-label" class="lk-display lk-nowrap font-semibold text-[13px] text-white/95 truncate"
             vx-text="live === 'music' && hasMedia
               ? media.title
               : live === 'focus'
-                ? (focus.mode === 'focus' ? 'Focus' : 'Break') + ' \u00b7 ' + focus.clock
+                ? (focus.mode === 'focus' ? 'Focus' : 'Break')
                 : 'Lekuvo is napping\u2026'"
-          ></span>
-          <!-- playing indicator: three bars -->
-          <span vx-show="live === 'music' && media.playing" class="shrink-0" style="display:flex;align-items:flex-end;gap:2px;height:12px">
-            <span class="lk-eqbar animate-pulse" style="width:3px;height:12px;border-radius:999px;background-color:#8EA7F7"></span>
-            <span class="lk-eqbar animate-pulse" style="width:3px;height:9px;border-radius:999px;background-color:#8EA7F7"></span>
-            <span class="lk-eqbar animate-pulse" style="width:3px;height:7px;border-radius:999px;background-color:#8EA7F7"></span>
-          </span>
+          ></div>
+          <!-- playing indicator: pulsing bars -->
+          <div id="pill" vx-show="live === 'music' && media.playing" class="flex items-end gap-[3px] shrink-0" style="height:14px">
+            <div class="lk-eqbar animate-pulse" style="width:3px;height:14px;border-radius:999px"></div>
+            <div class="lk-eqbar animate-pulse" style="width:3px;height:10px;border-radius:999px"></div>
+            <div class="lk-eqbar animate-pulse" style="width:3px;height:7px;border-radius:999px"></div>
+          </div>
+          <div
+            id="pill"
+            vx-show="live === 'focus'"
+            vx-text="focus.clock"
+            class="lk-display lk-tabular font-semibold text-[13px] text-white/95"
+          ></div>
+          <div id="pill" data-vv-test="hint" vx-show="live === 'idle'" class="text-[10px] text-white/35 shrink-0">hover me</div>
         </div>
-        <div id="focus-progress" class="lk-line h-1 rounded-full mt-1 overflow-hidden" vx-show="live === 'focus'">
-          <div class="lk-warm h-full rounded-full" :style="'width:' + focus.pct + '%'"></div>
-        </div>
-
-        <!-- Music progress under the label -->
         <div
-          id="music-progress"
-          class="lk-line h-1 rounded-full mt-1 overflow-hidden"
-          vx-show="live === 'music' && hasMedia && media.dur > 0"
+          id="pill"
+          class="h-1 rounded-full bg-white/15 mt-1.5 overflow-hidden"
+          vx-show="live !== 'idle'"
         >
-          <div class="lk-accent-soft h-full rounded-full" :style="'width:' + media.pct + '%'"></div>
+          <div
+            id="pill"
+            :class="live === 'music' ? 'lk-accent-soft h-full rounded-full' : 'lk-warm h-full rounded-full'"
+            :style="'width:' + (live === 'music' ? media.pct : focus.pct) + '%'"
+          ></div>
         </div>
       </div>
 
-      <span id="clock" data-vv-test="clock" vx-text="clock" class="lk-display lk-tabular text-sm font-semibold text-slate-400"></span>
       <img id="grip" data-vv-test="grip" src="icons/grip.png" alt="" class="shrink-0" style="width:14px;height:14px;opacity:0.55" />
     </div>
 
-    <!-- Toast tier -->
+    <!-- ══════════ toast tier (450 x 82, mascot + copy + actions) ══════════ -->
     <div
       id="toast"
       data-vv-test="toast"
-      class="lk-surface lk-elevated mt-2 rounded-2xl text-slate-100 px-4 py-3 flex items-center gap-3"
+      class="lk-surface mt-2 flex items-center gap-3 pl-2.5 pr-3.5 rounded-[30px] text-white cursor-pointer"
+      style="width:450px;height:82px"
       vx-show="toast.visible && !tucked"
     >
-      <div id="mascot-toast" class="w-11 h-11 shrink-0"></div>
-      <div class="flex flex-col min-w-0">
-        <p vx-text="toast.title" class="lk-nowrap font-bold text-sm leading-tight"></p>
-        <p vx-text="toast.sub" class="lk-nowrap text-xs text-slate-400"></p>
+      <div id="toast" data-vv-test="mascot-toast" class="w-12 h-12 shrink-0"></div>
+      <div id="toast" class="flex flex-col min-w-0 flex-1">
+        <p id="toast" vx-text="toast.title" class="lk-nowrap font-bold text-[15px] leading-tight truncate"></p>
+        <p id="toast" vx-text="toast.sub" class="lk-nowrap text-[11px] text-white/55 truncate mt-0.5"></p>
       </div>
+      <button
+        id="toast-act-0"
+        vx-show="toast.has0"
+        vx-text="toast.label0"
+        class="text-[11px] font-extrabold px-3 py-1.5 rounded-full shrink-0 transition active:opacity-70"
+        :class="toast.primary0 ? 'text-[11px] font-extrabold px-3 py-1.5 rounded-full shrink-0 transition active:opacity-70 lk-warm lk-ink' : 'text-[11px] font-extrabold px-3 py-1.5 rounded-full shrink-0 transition active:opacity-70 bg-white/12 text-white'"
+      ></button>
+      <button
+        id="toast-act-1"
+        vx-show="toast.has1"
+        vx-text="toast.label1"
+        class="text-[11px] font-extrabold px-3 py-1.5 rounded-full shrink-0 transition active:opacity-70"
+        :class="toast.primary1 ? 'text-[11px] font-extrabold px-3 py-1.5 rounded-full shrink-0 transition active:opacity-70 lk-warm lk-ink' : 'text-[11px] font-extrabold px-3 py-1.5 rounded-full shrink-0 transition active:opacity-70 bg-white/12 text-white'"
+      ></button>
     </div>
 
-    <!-- The expanded card -->
+    <!-- ══════════ expanded card: 600 x 392, tab-tinted, 10 tabs ══════════ -->
     <div
       id="card"
       data-vv-test="card"
-      class="lk-surface lk-elevated mt-2 rounded-2xl text-slate-100 p-4 flex flex-col gap-3"
-      style="width:480px;height:370px"
+      class="relative shrink-0 mt-2"
+      style="width:600px;height:392px"
       vx-show="expanded && !tucked"
     >
-      <!-- Tab bar -->
-      <div id="tabbar" data-vv-test="tabbar" class="lk-inset flex items-center gap-1 rounded-full p-1">
-        <button
-          id="tab-music"
-          class="flex-1 rounded-full px-3 py-2 text-xs font-bold transition"
-          :class="tab === 'music'
-            ? 'lk-accent flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-white'
-            : 'flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-400'"
-          @click="tab = 'music'"
-        >Music</button>
-        <button
-          id="tab-focus"
-          class="flex-1 rounded-full px-3 py-2 text-xs font-bold transition"
-          :class="tab === 'focus'
-            ? 'lk-warm flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-900'
-            : 'flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-400'"
-          @click="tab = 'focus'"
-        >Focus</button>
-        <button
-          id="tab-noise"
-          class="flex-1 rounded-full px-3 py-2 text-xs font-bold transition"
-          :class="tab === 'noise'
-            ? 'lk-cool flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-900'
-            : 'flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-400'"
-          @click="tab = 'noise'"
-        >Noise</button>
-        <button
-          id="tab-todo"
-          class="flex-1 rounded-full px-3 py-2 text-xs font-bold transition"
-          :class="tab === 'todo'
-            ? 'lk-cool flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-900'
-            : 'flex-1 rounded-full px-3 py-2 text-xs font-bold transition text-slate-400'"
-          @click="tab = 'todo'"
-        >To-do</button>
-      </div>
+      <div
+        id="card-surface"
+        class="lk-surface lk-tint-music w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none"
+        :class="tab === 'focus' ? 'lk-surface lk-tint-focus w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : tab === 'todo' ? 'lk-surface lk-tint-todo w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : tab === 'board' ? 'lk-surface lk-tint-board w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : tab === 'mixer' ? 'lk-surface lk-tint-mixer w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : tab === 'noise' ? 'lk-surface lk-tint-noise w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : tab === 'mirror' ? 'lk-surface lk-tint-mirror w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : tab === 'system' ? 'lk-surface lk-tint-system w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : tab === 'ai' ? 'lk-surface lk-tint-ai w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : tab === 'home' ? 'lk-surface lk-tint-home w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'
+          : 'lk-surface lk-tint-music w-full h-full flex flex-col overflow-hidden rounded-[30px] text-white select-none'"
+      >
+        <!-- (header / panels / footer follow; the tab tint is pre-blended
+             into the `lk-tint-*` surface classes — the renderer paints
+             solid colors only, so the reference radial wash becomes a
+             flat 14% tint over each theme's notch navy, re-skinned by
+             the theme-*.css sheets) -->
 
-      <!-- Music panel -->
-      <div id="musicrow" data-vv-test="musicrow" vx-show="tab === 'music'" class="flex items-center gap-4">
-        <!-- Album art when the player provides it; themed vinyl otherwise -->
-        <div vx-show="hasArt" class="lk-inset shrink-0 overflow-hidden" :style="lyrics.has ? 'width:72px;height:72px;border-radius:12px' : 'width:96px;height:96px;border-radius:16px'">
-          <img src="art/current.png" alt="" :style="lyrics.has ? 'width:72px;height:72px' : 'width:96px;height:96px'" />
+        <!-- header: move grip + 10-tab bar + pin + close -->
+        <div class="relative flex items-center gap-2 p-3 pb-0 shrink-0">
+          <button
+            id="grip"
+            class="lk-btn w-8 h-8 rounded-full flex items-center justify-center shrink-0 cursor-grab"
+            title="Drag to move"
+          >
+            <img src="icons/grip.png" alt="" style="width:14px;height:14px;opacity:0.7" />
+          </button>
+          <div class="flex-1 min-w-0 flex items-center gap-0.5 bg-white/[0.08] rounded-full p-1 overflow-hidden">
+            <button
+              id="tab-music"
+              :class="tab === 'music' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-music lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'music'"
+            >Music</button>
+            <button
+              id="tab-focus"
+              :class="tab === 'focus' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-focus lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'focus'"
+            >Focus</button>
+            <button
+              id="tab-todo"
+              :class="tab === 'todo' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-todo lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'todo'"
+            >To-do</button>
+            <button
+              id="tab-board"
+              :class="tab === 'board' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-board lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'board'"
+            >Board</button>
+            <button
+              id="tab-mixer"
+              :class="tab === 'mixer' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-mixer lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'mixer'"
+            >Mixer</button>
+            <button
+              id="tab-noise"
+              :class="tab === 'noise' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-noise lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'noise'"
+            >Noise</button>
+            <button
+              id="tab-mirror"
+              :class="tab === 'mirror' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-mirror lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'mirror'"
+            >Mirror</button>
+            <button
+              id="tab-system"
+              :class="tab === 'system' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-system lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'system'"
+            >System</button>
+            <button
+              id="tab-ai"
+              :class="tab === 'ai' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-ai lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'ai'"
+            >AI</button>
+            <button
+              id="tab-home"
+              :class="tab === 'home' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-home lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              @click="tab = 'home'"
+            >Home</button>
+          </div>
+          <button
+            id="btn-pin"
+            title="Pin open"
+            :class="pinned ? 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition text-[12px] font-extrabold lk-warm lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition text-[12px] font-extrabold lk-btn text-white/70'"
+            @click="pinned = true"
+          >P</button>
+          <button
+            id="btn-close"
+            class="lk-btn w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white/70"
+            title="Close"
+            @click="expanded = false; pinned = false"
+          >
+            <img src="icons/close.png" alt="Close" style="width:12px;height:12px" />
+          </button>
         </div>
-        <div
-          vx-show="!hasArt"
-          class="lk-vinyl shrink-0"
-          :class="media.playing
-            ? 'lk-vinyl animate-spin shrink-0'
-            : 'lk-vinyl shrink-0'"
-          style="width:96px;height:96px;border-radius:999px;display:flex;flex-direction:column;align-items:center;padding-top:12px"
-        >
-          <!-- off-center marker: the visible proof the disc is spinning -->
-          <div style="width:7px;height:7px;border-radius:999px;background-color:#F2F4FFB3"></div>
-          <div class="lk-vinyl-ring" style="width:58px;height:58px;border-radius:999px;border:6px solid #FFFFFF2E;display:flex;align-items:center;justify-content:center;margin-top:8px">
-            <div class="lk-vinyl-center" style="width:30px;height:30px;border-radius:999px;background-color:#10131F;display:flex;align-items:center;justify-content:center">
-              <div class="lk-vinyl-hole" style="width:10px;height:10px;border-radius:999px;background-color:#F2F4FFEB"></div>
+
+        <!-- panels -->
+        <div class="relative flex-1 min-h-0 p-3">
+
+          <!-- ── Music: art + vinyl, lyrics, seek, transport ── -->
+          <div vx-show="tab === 'music'" class="h-full flex gap-3.5 items-stretch">
+            <div class="flex flex-col items-center gap-2 shrink-0" style="width:104px">
+              <div vx-show="hasArt" class="rounded-[26px] overflow-hidden lk-inset shrink-0" style="width:104px;height:104px">
+                <img src="art/current.png" alt="" style="width:104px;height:104px" />
+              </div>
+              <div
+                vx-show="!hasArt"
+                :class="media.playing ? 'lk-vinyl animate-spin shrink-0' : 'lk-vinyl shrink-0'"
+                style="width:104px;height:104px;border-radius:999px;display:flex;flex-direction:column;align-items:center;padding-top:14px"
+              >
+                <div style="width:7px;height:7px;border-radius:999px;background-color:#F2F4FFB3"></div>
+                <div class="lk-vinyl-ring" style="width:60px;height:60px;border-radius:999px;border:6px solid #FFFFFF2E;display:flex;align-items:center;justify-content:center;margin-top:8px">
+                  <div style="width:30px;height:30px;border-radius:999px;background-color:#10131F;display:flex;align-items:center;justify-content:center">
+                    <div style="width:10px;height:10px;border-radius:999px;background-color:#F2F4FFEB"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-end gap-[3px]" style="height:14px">
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:14px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:11px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:8px;border-radius:999px"></div>
+                <div :class="media.playing ? 'lk-eqbar animate-pulse' : 'lk-eqbar opacity-40'" style="width:3px;height:12px;border-radius:999px"></div>
+              </div>
+            </div>
+            <div class="flex-1 min-w-0 flex flex-col">
+              <p vx-text="media.title" class="lk-display font-bold text-[17px] leading-tight truncate"></p>
+              <p vx-text="hasMedia ? media.artist : 'open your music player'" class="text-xs text-white/50 truncate"></p>
+              <div class="flex-1 min-h-0 overflow-hidden flex flex-col justify-center gap-1.5" style="margin-top:6px">
+                <p
+                  vx-show="lyrics.l0 !== ''"
+                  vx-text="lyrics.l0"
+                  :class="lyrics.c0 ? 'lk-nowrap text-[15px] font-bold lk-lyric-on truncate' : 'lk-nowrap text-xs text-white/30 truncate'"
+                ></p>
+                <p
+                  vx-show="lyrics.l1 !== ''"
+                  vx-text="lyrics.l1"
+                  :class="lyrics.c1 ? 'lk-nowrap text-[15px] font-bold lk-lyric-on truncate' : 'lk-nowrap text-xs text-white/30 truncate'"
+                ></p>
+                <p
+                  vx-show="lyrics.l2 !== ''"
+                  vx-text="lyrics.l2"
+                  :class="lyrics.c2 ? 'lk-nowrap text-[15px] font-bold lk-lyric-on truncate' : 'lk-nowrap text-xs text-white/30 truncate'"
+                ></p>
+                <p
+                  vx-show="lyrics.l3 !== ''"
+                  vx-text="lyrics.l3"
+                  :class="lyrics.c3 ? 'lk-nowrap text-[15px] font-bold lk-lyric-on truncate' : 'lk-nowrap text-xs text-white/30 truncate'"
+                ></p>
+                <p
+                  vx-show="lyrics.l4 !== ''"
+                  vx-text="lyrics.l4"
+                  :class="lyrics.c4 ? 'lk-nowrap text-[15px] font-bold lk-lyric-on truncate' : 'lk-nowrap text-xs text-white/30 truncate'"
+                ></p>
+                <p vx-show="!lyrics.has" class="text-xs text-white/35 truncate">
+                  <span vx-show="hasMedia">Lyrics will appear here when LRCLIB has them.</span>
+                  <span vx-show="!hasMedia">Nothing is playing — open your music player.</span>
+                </p>
+              </div>
+              <div vx-show="media.dur > 0" class="flex flex-col" style="margin-top:auto">
+                <div class="h-2 rounded-full bg-white/12 overflow-hidden flex gap-0.5">
+                  <button id="seek-0" :class="media.pct >= 5 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-1" :class="media.pct >= 15 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-2" :class="media.pct >= 25 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-3" :class="media.pct >= 35 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-4" :class="media.pct >= 45 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-5" :class="media.pct >= 55 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-6" :class="media.pct >= 65 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-7" :class="media.pct >= 75 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-8" :class="media.pct >= 85 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                  <button id="seek-9" :class="media.pct >= 95 ? 'flex-1 lk-accent-soft rounded-full' : 'flex-1 rounded-full'"></button>
+                </div>
+                <div class="flex justify-between lk-tabular text-[10px] text-white/40 mt-1">
+                  <div vx-text="media.pos"></div>
+                  <div vx-text="media.left"></div>
+                </div>
+              </div>
+              <div id="transport" data-vv-test="transport" class="flex items-center justify-center gap-3 mt-1">
+                <button id="btn-prev" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center">
+                  <img src="icons/prev.png" alt="Previous" style="width:16px;height:16px" />
+                </button>
+                <button id="btn-play" class="lk-btn-accent w-11 h-11 rounded-full flex items-center justify-center">
+                  <img vx-show="!media.playing" src="icons/play.png" alt="Play" style="width:20px;height:20px" />
+                  <img vx-show="media.playing" src="icons/pause.png" alt="Pause" style="width:20px;height:20px" />
+                </button>
+                <button id="btn-next" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center">
+                  <img src="icons/next.png" alt="Next" style="width:16px;height:16px" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Focus: ring bezel + timer + controls + session bars ── -->
+          <div vx-show="tab === 'focus'" class="h-full flex items-center gap-5">
+            <div
+              class="w-[106px] h-[106px] rounded-full shrink-0 flex flex-col items-center justify-center"
+              style="border:10px solid #FFFFFF1A"
+            >
+              <div vx-text="focus.clock" class="lk-display lk-tabular font-bold text-[26px] leading-none text-white"></div>
+              <div
+                class="lk-caps text-[10px] text-white/45 mt-1"
+                vx-text="focus.mode === 'focus' ? 'Focus' : 'Break'"
+              ></div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex gap-1.5">
+                <button
+                  id="btn-focus-mode-focus"
+                  :class="focus.mode === 'focus' ? 'text-[11px] font-bold px-3 py-1 rounded-full lk-btn-accent lk-ink' : 'text-[11px] font-bold px-3 py-1 rounded-full lk-btn text-white/60'"
+                >Focus 25</button>
+                <button
+                  id="btn-focus-mode-break"
+                  :class="focus.mode === 'break' ? 'text-[11px] font-bold px-3 py-1 rounded-full lk-cool lk-ink' : 'text-[11px] font-bold px-3 py-1 rounded-full lk-btn text-white/60'"
+                >Break 5</button>
+              </div>
+              <p
+                class="text-[13px] text-white/70 mt-3 leading-snug"
+                vx-text="focus.running
+                  ? (focus.mode === 'focus' ? 'Heads down. I\u2019m watching the clock.' : 'Break! Drink water, blink a lot.')
+                  : (focus.pct > 0 ? 'Paused. No rush, friend.' : 'Ready when you are.')"
+              ></p>
+              <div class="flex flex-wrap gap-2 mt-2">
+                <button
+                  id="btn-focus-toggle"
+                  class="lk-warm lk-ink text-xs font-bold px-4 py-2 rounded-full active:opacity-80 transition"
+                  vx-text="focus.running ? 'Pause' : 'Start'"
+                ></button>
+                <button id="btn-focus-reset" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center text-white/80 text-xs font-bold" title="Reset">R</button>
+                <button id="btn-focus-skip" class="lk-btn h-8 px-2.5 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white/80" title="Jump to the last 3 seconds">3s</button>
+              </div>
+              <div class="flex items-center gap-1.5 mt-3.5">
+                <div :class="focus.sessions >= 1 ? 'h-2 flex-1 rounded-full lk-warm' : 'h-2 flex-1 rounded-full bg-white/15'"></div>
+                <div :class="focus.sessions >= 2 ? 'h-2 flex-1 rounded-full lk-warm' : 'h-2 flex-1 rounded-full bg-white/15'"></div>
+                <div :class="focus.sessions >= 3 ? 'h-2 flex-1 rounded-full lk-warm' : 'h-2 flex-1 rounded-full bg-white/15'"></div>
+                <div :class="focus.sessions >= 4 ? 'h-2 flex-1 rounded-full lk-warm' : 'h-2 flex-1 rounded-full bg-white/15'"></div>
+              </div>
+              <p class="text-[10px] text-white/40 mt-1">
+                <span vx-text="focus.sessions"></span> of 4 sessions today
+              </p>
+            </div>
+          </div>
+
+          <!-- ── To-do: three host-driven rows + nudge ── -->
+          <div vx-show="tab === 'todo'" class="h-full flex flex-col">
+            <div class="flex-1 min-h-0 flex flex-col gap-1.5 pr-1">
+              <button
+                id="todo-0"
+                :class="todos[0].done ? 'flex items-center gap-2.5 bg-white/[0.07] border border-white/10 rounded-2xl px-3 py-2 transition opacity-50' : 'flex items-center gap-2.5 bg-white/[0.07] border border-white/10 rounded-2xl px-3 py-2 transition'"
+              >
+                <div
+                  id="todo-0"
+                  :class="todos[0].done ? 'w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] lk-cool lk-ink' : 'w-5 h-5 rounded-full border-2 border-white/30 flex items-center justify-center shrink-0 text-[10px] text-transparent'"
+                >&#10003;</div>
+                <div
+                  id="todo-0"
+                  vx-text="todos[0].text"
+                  :class="todos[0].done ? 'text-[13px] flex-1 truncate text-left line-through text-white/35' : 'text-[13px] flex-1 truncate text-left text-white'"
+                ></div>
+                <div id="todo-0" vx-text="todos[0].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
+                <div
+                  id="nudge-0"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/50 text-[10px] font-extrabold"
+                  title="Nudge me now"
+                >!</div>
+              </button>
+              <button
+                id="todo-1"
+                :class="todos[1].done ? 'flex items-center gap-2.5 bg-white/[0.07] border border-white/10 rounded-2xl px-3 py-2 transition opacity-50' : 'flex items-center gap-2.5 bg-white/[0.07] border border-white/10 rounded-2xl px-3 py-2 transition'"
+              >
+                <div
+                  id="todo-1"
+                  :class="todos[1].done ? 'w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] lk-cool lk-ink' : 'w-5 h-5 rounded-full border-2 border-white/30 flex items-center justify-center shrink-0 text-[10px] text-transparent'"
+                >&#10003;</div>
+                <div
+                  id="todo-1"
+                  vx-text="todos[1].text"
+                  :class="todos[1].done ? 'text-[13px] flex-1 truncate text-left line-through text-white/35' : 'text-[13px] flex-1 truncate text-left text-white'"
+                ></div>
+                <div id="todo-1" vx-text="todos[1].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
+                <div
+                  id="nudge-1"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/50 text-[10px] font-extrabold"
+                  title="Nudge me now"
+                >!</div>
+              </button>
+              <button
+                id="todo-2"
+                :class="todos[2].done ? 'flex items-center gap-2.5 bg-white/[0.07] border border-white/10 rounded-2xl px-3 py-2 transition opacity-50' : 'flex items-center gap-2.5 bg-white/[0.07] border border-white/10 rounded-2xl px-3 py-2 transition'"
+              >
+                <div
+                  id="todo-2"
+                  :class="todos[2].done ? 'w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] lk-cool lk-ink' : 'w-5 h-5 rounded-full border-2 border-white/30 flex items-center justify-center shrink-0 text-[10px] text-transparent'"
+                >&#10003;</div>
+                <div
+                  id="todo-2"
+                  vx-text="todos[2].text"
+                  :class="todos[2].done ? 'text-[13px] flex-1 truncate text-left line-through text-white/35' : 'text-[13px] flex-1 truncate text-left text-white'"
+                ></div>
+                <div id="todo-2" vx-text="todos[2].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
+                <div
+                  id="nudge-2"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/50 text-[10px] font-extrabold"
+                  title="Nudge me now"
+                >!</div>
+              </button>
+            </div>
+            <p class="text-[11px] text-white/40 mt-2">Give a task a time and Lekuvo will poke you. Tap the ! to nudge now.</p>
+          </div>
+
+          <!-- ── Board: clipboard history shell (collector deferred) ── -->
+          <div vx-show="tab === 'board'" class="h-full flex flex-col bg-white/[0.06] border border-white/10 rounded-2xl p-2.5">
+            <div class="flex items-center justify-between mb-1.5 px-0.5">
+              <p class="lk-caps text-[10px] text-white/40 font-bold">Board · tap to copy</p>
+              <button id="btn-board-clear" class="text-[10px] font-bold bg-white/10 px-2 py-0.5 rounded-full text-white/60">Clear</button>
+            </div>
+            <div class="flex-1 flex flex-col items-center justify-center text-white/35 text-center pt-6">
+              <div class="w-9 h-9 rounded-lg bg-white/12 mb-1.5"></div>
+              <div class="text-[11px] leading-snug">Copy anything anywhere — it lands on this board.</div>
+            </div>
+          </div>
+
+          <!-- ── Mixer: per-app rows (PulseAudio backend deferred) ── -->
+          <div vx-show="tab === 'mixer'" class="h-full flex flex-col items-center justify-center gap-2 text-white/50">
+            <div class="w-9 h-9 rounded-full bg-white/12"></div>
+            <p class="text-xs">No apps are playing audio right now.</p>
+            <p class="text-[11px] text-white/40 text-center">Real per-app volumes land here once the mixer backend ships.</p>
+          </div>
+
+          <!-- ── Noise: 2x4 tiles ── -->
+          <div vx-show="tab === 'noise'" class="h-full flex flex-col">
+            <div class="grid grid-cols-4 gap-2 flex-1">
+              <div :class="noise.rain ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
+                <button id="noise-rain" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
+                  <span id="noise-rain" :class="noise.rain ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#7DD3FC">RA</span>
+                  <div id="noise-rain" class="text-[11px] font-bold text-white">Rain</div>
+                  <div id="noise-rain" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.rain ? 'ON' : 'OFF'" :style="'background-color:' + (noise.rain ? '#7DD3FC' : '#FFFFFF1F')"></div>
+                </button>
+              </div>
+              <div :class="noise.forest ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
+                <button id="noise-forest" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
+                  <span id="noise-forest" :class="noise.forest ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#86E3C3">FO</span>
+                  <div id="noise-forest" class="text-[11px] font-bold text-white">Forest</div>
+                  <div id="noise-forest" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.forest ? 'ON' : 'OFF'" :style="'background-color:' + (noise.forest ? '#86E3C3' : '#FFFFFF1F')"></div>
+                </button>
+              </div>
+              <div :class="noise.waves ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
+                <button id="noise-waves" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
+                  <span id="noise-waves" :class="noise.waves ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#9DB2FF">WV</span>
+                  <div id="noise-waves" class="text-[11px] font-bold text-white">Waves</div>
+                  <div id="noise-waves" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.waves ? 'ON' : 'OFF'" :style="'background-color:' + (noise.waves ? '#9DB2FF' : '#FFFFFF1F')"></div>
+                </button>
+              </div>
+              <div :class="noise.kalimba ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
+                <button id="noise-kalimba" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
+                  <span id="noise-kalimba" :class="noise.kalimba ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#F8D77B">KA</span>
+                  <div id="noise-kalimba" class="text-[11px] font-bold text-white">Kalimba</div>
+                  <div id="noise-kalimba" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.kalimba ? 'ON' : 'OFF'" :style="'background-color:' + (noise.kalimba ? '#F8D77B' : '#FFFFFF1F')"></div>
+                </button>
+              </div>
+              <div :class="noise.fire ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
+                <button id="noise-fire" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
+                  <span id="noise-fire" :class="noise.fire ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#FDBA74">FI</span>
+                  <div id="noise-fire" class="text-[11px] font-bold text-white">Fire</div>
+                  <div id="noise-fire" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.fire ? 'ON' : 'OFF'" :style="'background-color:' + (noise.fire ? '#FDBA74' : '#FFFFFF1F')"></div>
+                </button>
+              </div>
+              <div :class="noise.wind ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
+                <button id="noise-wind" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
+                  <span id="noise-wind" :class="noise.wind ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#A5F3FC">WI</span>
+                  <div id="noise-wind" class="text-[11px] font-bold text-white">Wind</div>
+                  <div id="noise-wind" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.wind ? 'ON' : 'OFF'" :style="'background-color:' + (noise.wind ? '#A5F3FC' : '#FFFFFF1F')"></div>
+                </button>
+              </div>
+              <div :class="noise.night ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
+                <button id="noise-night" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
+                  <span id="noise-night" :class="noise.night ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#C4B5FD">NI</span>
+                  <div id="noise-night" class="text-[11px] font-bold text-white">Night</div>
+                  <div id="noise-night" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.night ? 'ON' : 'OFF'" :style="'background-color:' + (noise.night ? '#C4B5FD' : '#FFFFFF1F')"></div>
+                </button>
+              </div>
+              <div :class="noise.deep ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
+                <button id="noise-deep" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
+                  <span id="noise-deep" :class="noise.deep ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#6EE7B7">DE</span>
+                  <div id="noise-deep" class="text-[11px] font-bold text-white">Deep</div>
+                  <div id="noise-deep" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.deep ? 'ON' : 'OFF'" :style="'background-color:' + (noise.deep ? '#6EE7B7' : '#FFFFFF1F')"></div>
+                </button>
+              </div>
+            </div>
+            <p class="text-[11px] text-white/40 text-center mt-1.5">Real sounds, made live on your desktop. Stack as many as you like.</p>
+          </div>
+
+          <!-- ── Mirror: framed mascot stand-in (camera deferred) ── -->
+          <div vx-show="tab === 'mirror'" class="h-full flex items-center gap-4">
+            <div
+              class="relative w-[168px] h-[126px] rounded-[22px] overflow-hidden shrink-0 border border-white/15 flex items-center justify-center"
+              style="background-color:#2B2540"
+            >
+              <div id="mascot-mirror" data-vv-test="mascot-mirror" class="w-[92px] h-[92px]"></div>
+            </div>
+            <div class="min-w-0">
+              <p class="lk-display font-bold text-base text-white">Camera check</p>
+              <p class="text-xs text-white/55 mt-1 leading-relaxed">Quick peek before your call. Framing, lighting, snack on the desk, all good?</p>
+              <p class="text-[10px] text-white/35 mt-1.5">Video never leaves your PC.</p>
+              <button
+                id="btn-mirror"
+                class="mt-3 text-xs font-bold px-4 py-2 rounded-full lk-ink active:opacity-80 transition"
+                style="background-color:#FF9EC4"
+              >Open mirror</button>
+            </div>
+          </div>
+
+          <!-- ── System: chips + network placeholders + mini calendar ── -->
+          <div vx-show="tab === 'system'" class="h-full flex gap-3 min-h-0">
+            <div class="flex-1 min-w-0 flex flex-col gap-2.5 min-h-0">
+              <div class="flex items-center gap-2">
+                <button
+                  id="chip-wifi"
+                  title="Wi-Fi"
+                  :class="sys.wifi ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn text-white/60'"
+                >WF</button>
+                <button
+                  id="chip-bt"
+                  title="Bluetooth"
+                  :class="sys.bt ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn text-white/60'"
+                >BT</button>
+                <button
+                  id="chip-dnd"
+                  title="Do not disturb"
+                  :class="sys.dnd ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-warm lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn text-white/60'"
+                >DN</button>
+                <button
+                  id="chip-dark"
+                  title="Dark mode"
+                  :class="sys.dark ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn text-white/60'"
+                >DM</button>
+              </div>
+              <div class="rounded-2xl bg-white/[0.05] border border-white/10 p-2 flex-1 min-h-0 overflow-hidden">
+                <p class="lk-caps text-[10px] font-extrabold text-white/40 px-1.5 pt-0.5">Wi-Fi</p>
+                <p vx-show="sys.wifi" class="text-[11px] text-white/40 px-1.5 py-1.5">Scanning…</p>
+                <p vx-show="!sys.wifi" class="text-[11px] text-white/40 px-1.5 py-1.5">Turn the radio on to see networks.</p>
+                <p class="lk-caps text-[10px] font-extrabold text-white/40 px-1.5 pt-0.5">Bluetooth</p>
+                <p vx-show="!sys.bt" class="text-[11px] text-white/40 px-1.5 py-1.5">Powered off — flip the toggle up top.</p>
+                <p vx-show="sys.bt" class="text-[11px] text-white/40 px-1.5 py-1.5">No paired devices yet.</p>
+              </div>
+            </div>
+            <div class="shrink-0" style="width:188px">
+              <div class="rounded-2xl bg-white/[0.05] border border-white/10 p-3">
+                <div class="flex items-center justify-between mb-2">
+                  <button id="cal-prev" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center text-white/60 text-xs" title="Previous month">&#8249;</button>
+                  <div vx-text="cal.month" class="text-[11px] font-extrabold text-white/85"></div>
+                  <button id="cal-next" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center text-white/60 text-xs" title="Next month">&#8250;</button>
+                </div>
+                <div class="grid grid-cols-7 gap-y-0.5 text-center">
+                  <div class="text-[9px] font-extrabold text-white/35">M</div>
+                  <div class="text-[9px] font-extrabold text-white/35">T</div>
+                  <div class="text-[9px] font-extrabold text-white/35">W</div>
+                  <div class="text-[9px] font-extrabold text-white/35">T</div>
+                  <div class="text-[9px] font-extrabold text-white/35">F</div>
+                  <div class="text-[9px] font-extrabold text-white/35">S</div>
+                  <div class="text-[9px] font-extrabold text-white/35">S</div>
+                  <div :class="cal.today === 0 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[0] > 0 ? cal.days[0] : ''"></div>
+                  <div :class="cal.today === 1 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[1] > 0 ? cal.days[1] : ''"></div>
+                  <div :class="cal.today === 2 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[2] > 0 ? cal.days[2] : ''"></div>
+                  <div :class="cal.today === 3 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[3] > 0 ? cal.days[3] : ''"></div>
+                  <div :class="cal.today === 4 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[4] > 0 ? cal.days[4] : ''"></div>
+                  <div :class="cal.today === 5 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[5] > 0 ? cal.days[5] : ''"></div>
+                  <div :class="cal.today === 6 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[6] > 0 ? cal.days[6] : ''"></div>
+                  <div :class="cal.today === 7 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[7] > 0 ? cal.days[7] : ''"></div>
+                  <div :class="cal.today === 8 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[8] > 0 ? cal.days[8] : ''"></div>
+                  <div :class="cal.today === 9 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[9] > 0 ? cal.days[9] : ''"></div>
+                  <div :class="cal.today === 10 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[10] > 0 ? cal.days[10] : ''"></div>
+                  <div :class="cal.today === 11 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[11] > 0 ? cal.days[11] : ''"></div>
+                  <div :class="cal.today === 12 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[12] > 0 ? cal.days[12] : ''"></div>
+                  <div :class="cal.today === 13 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[13] > 0 ? cal.days[13] : ''"></div>
+                  <div :class="cal.today === 14 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[14] > 0 ? cal.days[14] : ''"></div>
+                  <div :class="cal.today === 15 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[15] > 0 ? cal.days[15] : ''"></div>
+                  <div :class="cal.today === 16 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[16] > 0 ? cal.days[16] : ''"></div>
+                  <div :class="cal.today === 17 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[17] > 0 ? cal.days[17] : ''"></div>
+                  <div :class="cal.today === 18 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[18] > 0 ? cal.days[18] : ''"></div>
+                  <div :class="cal.today === 19 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[19] > 0 ? cal.days[19] : ''"></div>
+                  <div :class="cal.today === 20 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[20] > 0 ? cal.days[20] : ''"></div>
+                  <div :class="cal.today === 21 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[21] > 0 ? cal.days[21] : ''"></div>
+                  <div :class="cal.today === 22 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[22] > 0 ? cal.days[22] : ''"></div>
+                  <div :class="cal.today === 23 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[23] > 0 ? cal.days[23] : ''"></div>
+                  <div :class="cal.today === 24 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[24] > 0 ? cal.days[24] : ''"></div>
+                  <div :class="cal.today === 25 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[25] > 0 ? cal.days[25] : ''"></div>
+                  <div :class="cal.today === 26 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[26] > 0 ? cal.days[26] : ''"></div>
+                  <div :class="cal.today === 27 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[27] > 0 ? cal.days[27] : ''"></div>
+                  <div :class="cal.today === 28 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[28] > 0 ? cal.days[28] : ''"></div>
+                  <div :class="cal.today === 29 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[29] > 0 ? cal.days[29] : ''"></div>
+                  <div :class="cal.today === 30 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[30] > 0 ? cal.days[30] : ''"></div>
+                  <div :class="cal.today === 31 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[31] > 0 ? cal.days[31] : ''"></div>
+                  <div :class="cal.today === 32 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[32] > 0 ? cal.days[32] : ''"></div>
+                  <div :class="cal.today === 33 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[33] > 0 ? cal.days[33] : ''"></div>
+                  <div :class="cal.today === 34 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[34] > 0 ? cal.days[34] : ''"></div>
+                  <div :class="cal.today === 35 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[35] > 0 ? cal.days[35] : ''"></div>
+                  <div :class="cal.today === 36 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[36] > 0 ? cal.days[36] : ''"></div>
+                  <div :class="cal.today === 37 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[37] > 0 ? cal.days[37] : ''"></div>
+                  <div :class="cal.today === 38 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[38] > 0 ? cal.days[38] : ''"></div>
+                  <div :class="cal.today === 39 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[39] > 0 ? cal.days[39] : ''"></div>
+                  <div :class="cal.today === 40 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[40] > 0 ? cal.days[40] : ''"></div>
+                  <div :class="cal.today === 41 ? 'cal-cell cal-today' : 'cal-cell text-white/70'" vx-text="cal.days[41] > 0 ? cal.days[41] : ''"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── AI: quota chips from the aiacctool collector ── -->
+          <div vx-show="tab === 'ai'" class="h-full flex flex-col gap-2 min-h-0">
+            <div vx-show="!ai.has" class="flex-1 flex flex-col items-center justify-center gap-3 text-center">
+              <div class="w-14 h-14 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center">
+                <div class="lk-display font-bold text-[20px]" style="color:#F8D77B">ai</div>
+              </div>
+              <div>
+                <p class="lk-display font-bold text-white" vx-text="ai.text !== '' ? ai.text : 'AI quota'"></p>
+                <p class="text-xs text-white/50 mt-1" vx-text="ai.error !== '' ? ai.error : 'No AI accounts reporting right now.'"></p>
+              </div>
+            </div>
+            <div vx-show="ai.has" class="flex-1 min-h-0 flex flex-col">
+              <div class="flex items-center gap-2 px-1 shrink-0">
+                <p class="text-[11px] font-extrabold text-white/60 truncate flex-1" vx-text="ai.text"></p>
+                <div class="text-[10px] font-bold text-white/35"><span vx-text="ai.count"></span> accounts</div>
+                <button id="btn-ai-refresh" class="text-[10px] font-extrabold bg-white/10 text-white/60 px-2.5 py-1 rounded-full" title="Refresh">Refresh</button>
+              </div>
+              <div class="flex-1 min-h-0 grid grid-cols-2 gap-2 pt-2 overflow-hidden">
+                <div vx-show="ai.a0.name !== ''" class="rounded-2xl bg-white/[0.06] border border-white/10 p-3">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-extrabold lk-ink shrink-0" vx-text="ai.a0.short" :style="'background-color:' + ai.a0.color"></span>
+                    <div class="text-xs font-bold truncate flex-1 text-white" vx-text="ai.a0.name"></div>
+                    <div class="text-[13px] font-extrabold lk-tabular" vx-text="ai.a0.pct + '%'" :style="'color:' + ai.a0.color"></div>
+                  </div>
+                  <div class="h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div class="h-full rounded-full" :style="'width:' + ai.a0.pct + '%;background-color:' + ai.a0.color"></div>
+                  </div>
+                  <p class="text-[10px] text-white/40 mt-1.5 font-bold" vx-text="ai.a0.reset"></p>
+                </div>
+                <div vx-show="ai.a1.name !== ''" class="rounded-2xl bg-white/[0.06] border border-white/10 p-3">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-extrabold lk-ink shrink-0" vx-text="ai.a1.short" :style="'background-color:' + ai.a1.color"></span>
+                    <div class="text-xs font-bold truncate flex-1 text-white" vx-text="ai.a1.name"></div>
+                    <div class="text-[13px] font-extrabold lk-tabular" vx-text="ai.a1.pct + '%'" :style="'color:' + ai.a1.color"></div>
+                  </div>
+                  <div class="h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div class="h-full rounded-full" :style="'width:' + ai.a1.pct + '%;background-color:' + ai.a1.color"></div>
+                  </div>
+                  <p class="text-[10px] text-white/40 mt-1.5 font-bold" vx-text="ai.a1.reset"></p>
+                </div>
+                <div vx-show="ai.a2.name !== ''" class="rounded-2xl bg-white/[0.06] border border-white/10 p-3">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-extrabold lk-ink shrink-0" vx-text="ai.a2.short" :style="'background-color:' + ai.a2.color"></span>
+                    <div class="text-xs font-bold truncate flex-1 text-white" vx-text="ai.a2.name"></div>
+                    <div class="text-[13px] font-extrabold lk-tabular" vx-text="ai.a2.pct + '%'" :style="'color:' + ai.a2.color"></div>
+                  </div>
+                  <div class="h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div class="h-full rounded-full" :style="'width:' + ai.a2.pct + '%;background-color:' + ai.a2.color"></div>
+                  </div>
+                  <p class="text-[10px] text-white/40 mt-1.5 font-bold" vx-text="ai.a2.reset"></p>
+                </div>
+                <div vx-show="ai.a3.name !== ''" class="rounded-2xl bg-white/[0.06] border border-white/10 p-3">
+                  <div class="flex items-center gap-2 mb-2">
+                    <span class="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-extrabold lk-ink shrink-0" vx-text="ai.a3.short" :style="'background-color:' + ai.a3.color"></span>
+                    <div class="text-xs font-bold truncate flex-1 text-white" vx-text="ai.a3.name"></div>
+                    <div class="text-[13px] font-extrabold lk-tabular" vx-text="ai.a3.pct + '%'" :style="'color:' + ai.a3.color"></div>
+                  </div>
+                  <div class="h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div class="h-full rounded-full" :style="'width:' + ai.a3.pct + '%;background-color:' + ai.a3.color"></div>
+                  </div>
+                  <p class="text-[10px] text-white/40 mt-1.5 font-bold" vx-text="ai.a3.reset"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Home: device switches from the ghome collector ── -->
+          <div vx-show="tab === 'home'" class="h-full flex flex-col gap-2 min-h-0">
+            <div vx-show="!home.has" class="flex-1 flex flex-col items-center justify-center gap-2">
+              <div class="w-5 h-5 rounded-full border-2 border-white/20 animate-spin"></div>
+              <p vx-show="home.error !== ''" class="text-[11px] text-white/40" vx-text="home.error"></p>
+            </div>
+            <div vx-show="home.has" class="flex-1 min-h-0 flex flex-col">
+              <div class="flex items-center gap-2 px-1 shrink-0">
+                <p class="text-[11px] font-extrabold text-white/60 flex-1 truncate">
+                  <span vx-text="home.active"></span>/<span vx-text="home.total"></span> active
+                  <span vx-show="!home.live" class="text-white/35 font-bold"> · simulation (no backend)</span>
+                </p>
+                <button id="btn-ghome-all-on" class="text-[10px] font-extrabold px-2.5 py-1 rounded-full text-white/90" style="background-color:#6FD9E833">All on</button>
+                <button id="btn-ghome-all-off" class="text-[10px] font-extrabold bg-white/10 text-white/60 px-2.5 py-1 rounded-full">All off</button>
+                <button id="btn-ghome-refresh" class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/60 text-[10px]" title="Refresh">&#8635;</button>
+              </div>
+              <div class="flex-1 min-h-0 flex flex-col gap-1.5 pt-2 overflow-hidden">
+                <button
+                  vx-show="home.d0.name !== ''"
+                  id="ghome-0"
+                  class="w-full flex items-center gap-2.5 rounded-xl px-2.5 text-left transition"
+                  :style="'background-color:' + (home.d0.on ? '#6FD9E833' : '#FFFFFF0D') + ';height:36px'"
+                >
+                  <span id="ghome-0" class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-extrabold lk-ink" vx-text="home.d0.kind === 'light' ? 'L' : home.d0.kind === 'socket' ? 'S' : home.d0.kind === 'thermostat' ? 'T' : 'W'" :style="'background-color:' + (home.d0.on ? '#6FD9E8' : '#FFFFFF1A')"></span>
+                  <div id="ghome-0" class="text-xs font-bold truncate flex-1 text-white" vx-text="home.d0.name"></div>
+                  <div id="ghome-0" class="text-[9px] text-white/40 shrink-0" vx-text="home.d0.room"></div>
+                  <span id="ghome-0" class="w-8 rounded-full flex items-center transition-colors shrink-0" :style="'height:18px;background-color:' + (home.d0.on ? '#6FD9E8' : '#FFFFFF29')">
+                    <div id="ghome-0" class="rounded-full bg-white transition-all" :style="'margin-left:' + (home.d0.on ? '16px' : '2px') + ';width:14px;height:14px'"></div>
+                  </span>
+                </button>
+                <button
+                  vx-show="home.d1.name !== ''"
+                  id="ghome-1"
+                  class="w-full flex items-center gap-2.5 rounded-xl px-2.5 text-left transition"
+                  :style="'background-color:' + (home.d1.on ? '#6FD9E833' : '#FFFFFF0D') + ';height:36px'"
+                >
+                  <span id="ghome-1" class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-extrabold lk-ink" vx-text="home.d1.kind === 'light' ? 'L' : home.d1.kind === 'socket' ? 'S' : home.d1.kind === 'thermostat' ? 'T' : 'W'" :style="'background-color:' + (home.d1.on ? '#6FD9E8' : '#FFFFFF1A')"></span>
+                  <div id="ghome-1" class="text-xs font-bold truncate flex-1 text-white" vx-text="home.d1.name"></div>
+                  <div id="ghome-1" class="text-[9px] text-white/40 shrink-0" vx-text="home.d1.room"></div>
+                  <span id="ghome-1" class="w-8 rounded-full flex items-center transition-colors shrink-0" :style="'height:18px;background-color:' + (home.d1.on ? '#6FD9E8' : '#FFFFFF29')">
+                    <div id="ghome-1" class="rounded-full bg-white transition-all" :style="'margin-left:' + (home.d1.on ? '16px' : '2px') + ';width:14px;height:14px'"></div>
+                  </span>
+                </button>
+                <button
+                  vx-show="home.d2.name !== ''"
+                  id="ghome-2"
+                  class="w-full flex items-center gap-2.5 rounded-xl px-2.5 text-left transition"
+                  :style="'background-color:' + (home.d2.on ? '#6FD9E833' : '#FFFFFF0D') + ';height:36px'"
+                >
+                  <span id="ghome-2" class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-extrabold lk-ink" vx-text="home.d2.kind === 'light' ? 'L' : home.d2.kind === 'socket' ? 'S' : home.d2.kind === 'thermostat' ? 'T' : 'W'" :style="'background-color:' + (home.d2.on ? '#6FD9E8' : '#FFFFFF1A')"></span>
+                  <div id="ghome-2" class="text-xs font-bold truncate flex-1 text-white" vx-text="home.d2.name"></div>
+                  <div id="ghome-2" class="text-[9px] text-white/40 shrink-0" vx-text="home.d2.room"></div>
+                  <span id="ghome-2" class="w-8 rounded-full flex items-center transition-colors shrink-0" :style="'height:18px;background-color:' + (home.d2.on ? '#6FD9E8' : '#FFFFFF29')">
+                    <div id="ghome-2" class="rounded-full bg-white transition-all" :style="'margin-left:' + (home.d2.on ? '16px' : '2px') + ';width:14px;height:14px'"></div>
+                  </span>
+                </button>
+                <button
+                  vx-show="home.d3.name !== ''"
+                  id="ghome-3"
+                  class="w-full flex items-center gap-2.5 rounded-xl px-2.5 text-left transition"
+                  :style="'background-color:' + (home.d3.on ? '#6FD9E833' : '#FFFFFF0D') + ';height:36px'"
+                >
+                  <span id="ghome-3" class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-extrabold lk-ink" vx-text="home.d3.kind === 'light' ? 'L' : home.d3.kind === 'socket' ? 'S' : home.d3.kind === 'thermostat' ? 'T' : 'W'" :style="'background-color:' + (home.d3.on ? '#6FD9E8' : '#FFFFFF1A')"></span>
+                  <div id="ghome-3" class="text-xs font-bold truncate flex-1 text-white" vx-text="home.d3.name"></div>
+                  <div id="ghome-3" class="text-[9px] text-white/40 shrink-0" vx-text="home.d3.room"></div>
+                  <span id="ghome-3" class="w-8 rounded-full flex items-center transition-colors shrink-0" :style="'height:18px;background-color:' + (home.d3.on ? '#6FD9E8' : '#FFFFFF29')">
+                    <div id="ghome-3" class="rounded-full bg-white transition-all" :style="'margin-left:' + (home.d3.on ? '16px' : '2px') + ';width:14px;height:14px'"></div>
+                  </span>
+                </button>
+                <button
+                  vx-show="home.d4.name !== ''"
+                  id="ghome-4"
+                  class="w-full flex items-center gap-2.5 rounded-xl px-2.5 text-left transition"
+                  :style="'background-color:' + (home.d4.on ? '#6FD9E833' : '#FFFFFF0D') + ';height:36px'"
+                >
+                  <span id="ghome-4" class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-extrabold lk-ink" vx-text="home.d4.kind === 'light' ? 'L' : home.d4.kind === 'socket' ? 'S' : home.d4.kind === 'thermostat' ? 'T' : 'W'" :style="'background-color:' + (home.d4.on ? '#6FD9E8' : '#FFFFFF1A')"></span>
+                  <div id="ghome-4" class="text-xs font-bold truncate flex-1 text-white" vx-text="home.d4.name"></div>
+                  <div id="ghome-4" class="text-[9px] text-white/40 shrink-0" vx-text="home.d4.room"></div>
+                  <span id="ghome-4" class="w-8 rounded-full flex items-center transition-colors shrink-0" :style="'height:18px;background-color:' + (home.d4.on ? '#6FD9E8' : '#FFFFFF29')">
+                    <div id="ghome-4" class="rounded-full bg-white transition-all" :style="'margin-left:' + (home.d4.on ? '16px' : '2px') + ';width:14px;height:14px'"></div>
+                  </span>
+                </button>
+                <button
+                  vx-show="home.d5.name !== ''"
+                  id="ghome-5"
+                  class="w-full flex items-center gap-2.5 rounded-xl px-2.5 text-left transition"
+                  :style="'background-color:' + (home.d5.on ? '#6FD9E833' : '#FFFFFF0D') + ';height:36px'"
+                >
+                  <span id="ghome-5" class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-extrabold lk-ink" vx-text="home.d5.kind === 'light' ? 'L' : home.d5.kind === 'socket' ? 'S' : home.d5.kind === 'thermostat' ? 'T' : 'W'" :style="'background-color:' + (home.d5.on ? '#6FD9E8' : '#FFFFFF1A')"></span>
+                  <div id="ghome-5" class="text-xs font-bold truncate flex-1 text-white" vx-text="home.d5.name"></div>
+                  <div id="ghome-5" class="text-[9px] text-white/40 shrink-0" vx-text="home.d5.room"></div>
+                  <span id="ghome-5" class="w-8 rounded-full flex items-center transition-colors shrink-0" :style="'height:18px;background-color:' + (home.d5.on ? '#6FD9E8' : '#FFFFFF29')">
+                    <div id="ghome-5" class="rounded-full bg-white transition-all" :style="'margin-left:' + (home.d5.on ? '16px' : '2px') + ';width:14px;height:14px'"></div>
+                  </span>
+                </button>
+                <button
+                  vx-show="home.d6.name !== ''"
+                  id="ghome-6"
+                  class="w-full flex items-center gap-2.5 rounded-xl px-2.5 text-left transition"
+                  :style="'background-color:' + (home.d6.on ? '#6FD9E833' : '#FFFFFF0D') + ';height:36px'"
+                >
+                  <span id="ghome-6" class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-extrabold lk-ink" vx-text="home.d6.kind === 'light' ? 'L' : home.d6.kind === 'socket' ? 'S' : home.d6.kind === 'thermostat' ? 'T' : 'W'" :style="'background-color:' + (home.d6.on ? '#6FD9E8' : '#FFFFFF1A')"></span>
+                  <div id="ghome-6" class="text-xs font-bold truncate flex-1 text-white" vx-text="home.d6.name"></div>
+                  <div id="ghome-6" class="text-[9px] text-white/40 shrink-0" vx-text="home.d6.room"></div>
+                  <span id="ghome-6" class="w-8 rounded-full flex items-center transition-colors shrink-0" :style="'height:18px;background-color:' + (home.d6.on ? '#6FD9E8' : '#FFFFFF29')">
+                    <div id="ghome-6" class="rounded-full bg-white transition-all" :style="'margin-left:' + (home.d6.on ? '16px' : '2px') + ';width:14px;height:14px'"></div>
+                  </span>
+                </button>
+                <button
+                  vx-show="home.d7.name !== ''"
+                  id="ghome-7"
+                  class="w-full flex items-center gap-2.5 rounded-xl px-2.5 text-left transition"
+                  :style="'background-color:' + (home.d7.on ? '#6FD9E833' : '#FFFFFF0D') + ';height:36px'"
+                >
+                  <span id="ghome-7" class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 text-[11px] font-extrabold lk-ink" vx-text="home.d7.kind === 'light' ? 'L' : home.d7.kind === 'socket' ? 'S' : home.d7.kind === 'thermostat' ? 'T' : 'W'" :style="'background-color:' + (home.d7.on ? '#6FD9E8' : '#FFFFFF1A')"></span>
+                  <div id="ghome-7" class="text-xs font-bold truncate flex-1 text-white" vx-text="home.d7.name"></div>
+                  <div id="ghome-7" class="text-[9px] text-white/40 shrink-0" vx-text="home.d7.room"></div>
+                  <span id="ghome-7" class="w-8 rounded-full flex items-center transition-colors shrink-0" :style="'height:18px;background-color:' + (home.d7.on ? '#6FD9E8' : '#FFFFFF29')">
+                    <div id="ghome-7" class="rounded-full bg-white transition-all" :style="'margin-left:' + (home.d7.on ? '16px' : '2px') + ';width:14px;height:14px'"></div>
+                  </span>
+                </button>
+                <p vx-show="home.d0.name === ''" class="text-center text-xs text-white/40 pt-8">No devices configured.</p>
+              </div>
             </div>
           </div>
         </div>
-        <div class="flex flex-col gap-1.5 grow min-w-0">
-          <p vx-text="media.title" class="lk-display lk-nowrap font-bold text-lg leading-tight"></p>
-          <p vx-text="hasMedia ? media.artist : 'Open a music player to get started'" class="lk-nowrap text-sm text-slate-400"></p>
-          <div class="flex items-center gap-2 mt-0.5" vx-show="!lyrics.has">
-            <span vx-show="media.playing" class="shrink-0" style="display:flex;align-items:flex-end;gap:2px;height:12px">
-              <span class="lk-eqbar animate-pulse" style="width:3px;height:12px;border-radius:999px;background-color:#8EA7F7"></span>
-              <span class="lk-eqbar animate-pulse" style="width:3px;height:9px;border-radius:999px;background-color:#8EA7F7"></span>
-              <span class="lk-eqbar animate-pulse" style="width:3px;height:7px;border-radius:999px;background-color:#8EA7F7"></span>
-            </span>
-            <span
-              class="lk-nowrap text-xs font-bold" style="background-color:#FFFFFF1A;color:#C7CFE8;border-radius:999px;padding:2px 8px"
-              vx-text="hasMedia ? (media.playing ? 'Playing now' : 'Paused') : 'No player'"
-            ></span>
+
+        <!-- footer: Lekuvo's corner — mascot slot, tip per tab, status cluster.
+             The reference hangs him below the card with absolute positioning,
+             which the renderer's layout engine does not implement, so he
+             stands in the footer's left corner (the reference reserves
+             exactly this slot via its footer padding). -->
+        <div class="h-px bg-white/10 shrink-0"></div>
+        <div class="h-[48px] shrink-0 flex items-center gap-2 pr-3" style="padding-left:16px">
+          <div
+            id="mascot-full"
+            data-vv-test="mascot-full"
+            class="w-[44px] h-[44px] shrink-0"
+          ></div>
+          <p vx-show="tab === 'music'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Lyrics scroll on their own, thanks to LRCLIB.</p>
+          <p vx-show="tab === 'focus'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Collapse me and the timer stays in the pill.</p>
+          <p vx-show="tab === 'todo'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Give a task a time and I'll poke you.</p>
+          <p vx-show="tab === 'board'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Everything you copy lands here. Tap to re-copy.</p>
+          <p vx-show="tab === 'mixer'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Every app gets its own volume knob.</p>
+          <p vx-show="tab === 'noise'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Rain + kalimba = instant cozy.</p>
+          <p vx-show="tab === 'mirror'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Your camera feed never leaves this page.</p>
+          <p vx-show="tab === 'system'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Wi-Fi, Bluetooth, brightness — all real, all here.</p>
+          <p vx-show="tab === 'ai'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Your AI quotas, straight from aiacctool.</p>
+          <p vx-show="tab === 'home'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Lights and plugs, room by room — Home Assistant ready.</p>
+
+          <div class="flex items-center gap-2 shrink-0">
+            <div id="clock" data-vv-test="clock" vx-text="clock" class="lk-display lk-tabular text-[11px] font-extrabold text-white/80"></div>
+            <button
+              id="theme-classic"
+              title="Classic"
+              :class="theme === 'classic' ? 'sw-classic w-5 h-5 rounded-full border-2 lk-sel' : 'sw-classic w-5 h-5 rounded-full border-2 lk-unsel'"
+            ></button>
+            <button
+              id="theme-meadow"
+              title="Meadow"
+              :class="theme === 'meadow' ? 'sw-meadow w-5 h-5 rounded-full border-2 lk-sel' : 'sw-meadow w-5 h-5 rounded-full border-2 lk-unsel'"
+            ></button>
+            <button
+              id="theme-sunset"
+              title="Sunset"
+              :class="theme === 'sunset' ? 'sw-sunset w-5 h-5 rounded-full border-2 lk-sel' : 'sw-sunset w-5 h-5 rounded-full border-2 lk-unsel'"
+            ></button>
+            <button
+              id="theme-dusk"
+              title="Dusk"
+              :class="theme === 'dusk' ? 'sw-dusk w-5 h-5 rounded-full border-2 lk-sel' : 'sw-dusk w-5 h-5 rounded-full border-2 lk-unsel'"
+            ></button>
+            <button
+              id="btn-exit"
+              :class="exit.armed ? 'text-[11px] font-extrabold px-3 py-1.5 rounded-full transition active:opacity-80 lk-warm lk-ink' : 'text-[11px] font-extrabold px-3 py-1.5 rounded-full transition active:opacity-80 lk-btn text-white/70'"
+              vx-text="exit.armed ? 'Really quit?' : 'Exit'"
+            ></button>
           </div>
         </div>
-      </div>
-      <!-- Synced lyrics: five slots around the current line -->
-      <div vx-show="tab === 'music' && lyrics.has" class="flex flex-col items-center gap-1 overflow-hidden" style="height:78px">
-        <p vx-show="lyrics.l0 !== ''" vx-text="lyrics.l0" :class="lyrics.c0 ? 'lk-nowrap text-xs text-slate-300' : 'lk-nowrap text-xs text-slate-500'"></p>
-        <p vx-show="lyrics.l1 !== ''" vx-text="lyrics.l1" :class="lyrics.c1 ? 'lk-nowrap text-xs text-slate-300' : 'lk-nowrap text-xs text-slate-400'"></p>
-        <p vx-show="lyrics.l2 !== ''" vx-text="lyrics.l2" :class="lyrics.c2 ? 'lk-nowrap text-sm font-bold lk-accent-soft' : 'lk-nowrap text-sm font-bold text-slate-200'"></p>
-        <p vx-show="lyrics.l3 !== ''" vx-text="lyrics.l3" :class="lyrics.c3 ? 'lk-nowrap text-xs text-slate-300' : 'lk-nowrap text-xs text-slate-400'"></p>
-        <p vx-show="lyrics.l4 !== ''" vx-text="lyrics.l4" :class="lyrics.c4 ? 'lk-nowrap text-xs text-slate-300' : 'lk-nowrap text-xs text-slate-500'"></p>
-      </div>
-
-      <!-- Click-to-seek: ten segments -->
-      <div vx-show="tab === 'music' && media.dur > 0" class="flex flex-col gap-2" style="width:100%">
-        <div class="flex gap-1" style="width:100%;height:12px">
-          <button id="seek-0" class="lk-line flex-1 rounded-l-full" :class="media.pct >= 10 ? 'lk-accent flex-1 rounded-l-full' : 'lk-line flex-1 rounded-l-full'"></button>
-          <button id="seek-1" class="lk-line flex-1" :class="media.pct >= 20 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
-          <button id="seek-2" class="lk-line flex-1" :class="media.pct >= 30 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
-          <button id="seek-3" class="lk-line flex-1" :class="media.pct >= 40 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
-          <button id="seek-4" class="lk-line flex-1" :class="media.pct >= 50 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
-          <button id="seek-5" class="lk-line flex-1" :class="media.pct >= 60 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
-          <button id="seek-6" class="lk-line flex-1" :class="media.pct >= 70 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
-          <button id="seek-7" class="lk-line flex-1" :class="media.pct >= 80 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
-          <button id="seek-8" class="lk-line flex-1" :class="media.pct >= 90 ? 'lk-accent flex-1' : 'lk-line flex-1'"></button>
-          <button id="seek-9" class="lk-line flex-1 rounded-r-full" :class="media.pct >= 99 ? 'lk-accent flex-1 rounded-r-full' : 'lk-line flex-1 rounded-r-full'"></button>
-        </div>
-        <div class="flex items-center lk-tabular text-xs text-slate-400" style="width:100%">
-          <span vx-text="media.pos"></span>
-          <span vx-text="media.left" style="margin-left:auto"></span>
-        </div>
-      </div>
-      <div id="transport" data-vv-test="transport" vx-show="tab === 'music'" class="flex items-center justify-center gap-6">
-        <button id="btn-prev" class="lk-btn w-10 h-10 rounded-full flex items-center justify-center">
-          <img src="icons/prev.png" alt="Previous" style="width:16px;height:16px" />
-        </button>
-        <button id="btn-play" class="lk-btn-accent w-14 h-14 rounded-full flex items-center justify-center">
-          <img vx-show="!media.playing" src="icons/play.png" alt="Play" style="width:20px;height:20px" />
-          <img vx-show="media.playing" src="icons/pause.png" alt="Pause" style="width:20px;height:20px" />
-        </button>
-        <button id="btn-next" class="lk-btn w-10 h-10 rounded-full flex items-center justify-center">
-          <img src="icons/next.png" alt="Next" style="width:16px;height:16px" />
-        </button>
-      </div>
-
-      <!-- Focus panel -->
-      <div id="focuspanel" data-vv-test="focuspanel" vx-show="tab === 'focus'" class="flex flex-col items-center gap-3">
-        <p class="lk-caps text-xs font-bold text-slate-500">
-          <span vx-text="focus.mode === 'focus' ? 'Focus session' : 'Break time'"></span>
-        </p>
-        <p vx-text="focus.clock" class="lk-display lk-tabular text-5xl font-bold"></p>
-        <div class="lk-line w-full h-2 rounded-full overflow-hidden">
-          <div class="lk-warm h-full rounded-full" :style="'width:' + focus.pct + '%'"></div>
-        </div>
-        <div class="flex items-center gap-3">
-          <button
-            id="btn-focus-toggle"
-            class="lk-warm rounded-full px-6 py-2 text-sm font-bold text-slate-900"
-            vx-text="focus.running ? 'Pause' : 'Start'"
-          ></button>
-          <button id="btn-focus-reset" class="lk-btn rounded-full px-6 py-2 text-sm font-bold text-slate-200">Reset</button>
-        </div>
-        <p class="text-xs text-slate-500">
-          Sessions today: <span vx-text="focus.sessions" class="font-bold text-slate-300"></span>
-        </p>
-      </div>
-
-      <!-- Noise panel: independent tiles, as in Layzee's sound mixer. -->
-      <div vx-show="tab === 'noise'" class="flex flex-col gap-2">
-        <p class="text-xs text-slate-400">Mix sounds for your space</p>
-        <div class="flex gap-2">
-          <button id="noise-rain" class="lk-sound flex-1 rounded-xl" :class="noise.rain ? 'lk-sound lk-accent flex-1 rounded-xl text-white' : 'lk-sound lk-inset flex-1 rounded-xl text-slate-200'">
-            <span class="text-sm font-bold">Rain</span>
-            <span class="text-xs" vx-text="noise.rain ? 'On' : 'Off'"></span>
-          </button>
-          <button id="noise-waves" class="lk-sound flex-1 rounded-xl" :class="noise.waves ? 'lk-sound lk-accent flex-1 rounded-xl text-white' : 'lk-sound lk-inset flex-1 rounded-xl text-slate-200'">
-            <span class="text-sm font-bold">Waves</span>
-            <span class="text-xs" vx-text="noise.waves ? 'On' : 'Off'"></span>
-          </button>
-        </div>
-        <div class="flex gap-2">
-          <button id="noise-fire" class="lk-sound flex-1 rounded-xl" :class="noise.fire ? 'lk-sound lk-accent flex-1 rounded-xl text-white' : 'lk-sound lk-inset flex-1 rounded-xl text-slate-200'">
-            <span class="text-sm font-bold">Fire</span>
-            <span class="text-xs" vx-text="noise.fire ? 'On' : 'Off'"></span>
-          </button>
-          <button id="noise-wind" class="lk-sound flex-1 rounded-xl" :class="noise.wind ? 'lk-sound lk-accent flex-1 rounded-xl text-white' : 'lk-sound lk-inset flex-1 rounded-xl text-slate-200'">
-            <span class="text-sm font-bold">Wind</span>
-            <span class="text-xs" vx-text="noise.wind ? 'On' : 'Off'"></span>
-          </button>
-        </div>
-      </div>
-
-      <!-- To-do panel -->
-      <div id="todopanel" data-vv-test="todopanel" vx-show="tab === 'todo'" class="flex flex-col gap-2">
-        <button
-          id="todo-0"
-          class="flex items-center gap-3 rounded-xl px-4 py-3 text-left transition"
-          :class="todos[0].done
-            ? 'lk-inset flex items-center gap-3 rounded-xl px-4 py-3 text-left transition opacity-50'
-            : 'lk-inset flex items-center gap-3 rounded-xl px-4 py-3 text-left transition'"
-        >
-          <span
-            class="lk-border w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs"
-            :class="todos[0].done
-            ? 'lk-border lk-cool w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs text-slate-900'
-            : 'lk-border w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs'"
-          ><span vx-show="todos[0].done">&#10003;</span></span>
-          <span
-            vx-text="todos[0].text"
-            class="text-sm font-semibold"
-            :class="todos[0].done
-            ? 'lk-nowrap text-sm font-semibold line-through'
-            : 'lk-nowrap text-sm font-semibold'"
-          ></span>
-        </button>
-        <button
-          id="todo-1"
-          class="flex items-center gap-3 rounded-xl px-4 py-3 text-left transition"
-          :class="todos[1].done
-            ? 'lk-inset flex items-center gap-3 rounded-xl px-4 py-3 text-left transition opacity-50'
-            : 'lk-inset flex items-center gap-3 rounded-xl px-4 py-3 text-left transition'"
-        >
-          <span
-            class="lk-border w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs"
-            :class="todos[1].done
-            ? 'lk-border lk-cool w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs text-slate-900'
-            : 'lk-border w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs'"
-          ><span vx-show="todos[1].done">&#10003;</span></span>
-          <span
-            vx-text="todos[1].text"
-            class="text-sm font-semibold"
-            :class="todos[1].done
-            ? 'lk-nowrap text-sm font-semibold line-through'
-            : 'lk-nowrap text-sm font-semibold'"
-          ></span>
-        </button>
-        <button
-          id="todo-2"
-          class="flex items-center gap-3 rounded-xl px-4 py-3 text-left transition"
-          :class="todos[2].done
-            ? 'lk-inset flex items-center gap-3 rounded-xl px-4 py-3 text-left transition opacity-50'
-            : 'lk-inset flex items-center gap-3 rounded-xl px-4 py-3 text-left transition'"
-        >
-          <span
-            class="lk-border w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs"
-            :class="todos[2].done
-            ? 'lk-border lk-cool w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs text-slate-900'
-            : 'lk-border w-5 h-5 rounded-md border-2 flex items-center justify-center text-xs'"
-          ><span vx-show="todos[2].done">&#10003;</span></span>
-          <span
-            vx-text="todos[2].text"
-            class="text-sm font-semibold"
-            :class="todos[2].done
-            ? 'lk-nowrap text-sm font-semibold line-through'
-            : 'lk-nowrap text-sm font-semibold'"
-          ></span>
-        </button>
-      </div>
-
-      <div id="footrow" data-vv-test="footrow" class="flex items-center justify-between text-xs text-slate-500">
-        <!-- Theme picker -->
-        <div class="flex items-center gap-2">
-          <button
-            id="theme-classic"
-            title="Classic"
-            class="sw-classic lk-unsel w-5 h-5 rounded-full border-2"
-            :class="theme === 'classic'
-              ? 'sw-classic lk-sel w-5 h-5 rounded-full border-2'
-              : 'sw-classic lk-unsel w-5 h-5 rounded-full border-2'"
-          ></button>
-          <button
-            id="theme-meadow"
-            title="Meadow"
-            class="sw-meadow lk-unsel w-5 h-5 rounded-full border-2"
-            :class="theme === 'meadow'
-              ? 'sw-meadow lk-sel w-5 h-5 rounded-full border-2'
-              : 'sw-meadow lk-unsel w-5 h-5 rounded-full border-2'"
-          ></button>
-          <button
-            id="theme-sunset"
-            title="Sunset"
-            class="sw-sunset lk-unsel w-5 h-5 rounded-full border-2"
-            :class="theme === 'sunset'
-              ? 'sw-sunset lk-sel w-5 h-5 rounded-full border-2'
-              : 'sw-sunset lk-unsel w-5 h-5 rounded-full border-2'"
-          ></button>
-          <button
-            id="theme-dusk"
-            title="Dusk"
-            class="sw-dusk lk-unsel w-5 h-5 rounded-full border-2"
-            :class="theme === 'dusk'
-              ? 'sw-dusk lk-sel w-5 h-5 rounded-full border-2'
-              : 'sw-dusk lk-unsel w-5 h-5 rounded-full border-2'"
-          ></button>
-        </div>
-        <span class="font-bold">Lekuvo</span>
-        <button id="btn-close" class="lk-btn rounded-full w-7 h-7 flex items-center justify-center" @click="expanded = false; pinned = false">
-          <img src="icons/close.png" alt="Close" style="width:12px;height:12px" />
-        </button>
       </div>
     </div>
   </main>
