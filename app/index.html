@@ -160,12 +160,14 @@
     </div>
 
     <!-- ══════════ expanded card: 600 x 392, tab-tinted, 10 tabs ══════════ -->
+    <!-- Morphs between pill-width zero-height and full size via width/height
+         transitions (the reference notch's `transition-[width]` vocabulary);
+         the window never resizes, so presenting stays a fixed-size blit. -->
     <div
       id="card"
       data-vv-test="card"
-      class="lk-cardedge relative shrink-0 mt-2"
-      style="width:600px;height:392px"
-      vx-show="expanded && !tucked"
+      class="lk-cardedge relative shrink-0 mt-2 overflow-hidden transition-all duration-500 ease-out"
+      :style="'width:' + (expanded && !tucked ? '600px' : '240px') + ';height:' + (expanded && !tucked ? '392px' : '0px')"
     >
       <div
         id="card-surface"

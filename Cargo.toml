@@ -40,3 +40,9 @@ lekuvo-mascot = { path = "crates/lekuvo-mascot" }
 
 [profile.release]
 lto = "thin"
+# Local override: the perf work rides in the sibling velqu-view checkout
+# (branch host-write-api) and is not pushed/published yet. Drop this section
+# once that branch lands upstream — the git dependency above is the release
+# source of truth.
+[patch."https://github.com/ther12k/velqu-view.git"]
+velqu-view = { path = "../velqu-view/crates/velqu-view" }

@@ -425,6 +425,21 @@ impl NotchWindow {
     /// visual; transparent pixels let the desktop show through. RGB is
     /// premultiplied by alpha as X Render's compositing model requires.
     pub fn present(&mut self, frame: &[u8]) -> Result<(), HostError> {
+        self.present_with_damage(frame, None)
+    }
+
+    /// Presents one RGBA8 frame, repainting only `damage` when given
+    /// (`(x, y, w, h)` in window coordinates): everything outside the rect
+    /// already matches the screen, so only those rows are converted into
+    /// the shm segment and only that sub-rect reaches the X server. A
+    /// `None` or degenerate rect presents the whole surface. Callers MUST
+    /// pass `None` after an Expose (the screen's copy is stale outside any
+    /// window the compositor reports).
+    pub fn present_with_damage(
+        &mut self,
+        frame: &[u8],
+        damage: Option<(i16, i16, u16, u16)>,
+    ) -> Result<(), HostError> {
         let expected = self.width as usize * self.height as usize * 4;
         if frame.len() != expected {
             return Err(HostError::FrameSize {
@@ -433,26 +448,45 @@ impl NotchWindow {
             });
         }
         let depth = self.depth;
+        // Clamp the damage to the window; degenerate rects go full-surface.
+        let (dx, dy, dw, dh) = match damage {
+            Some((x, y, w, h)) if w > 0 && h > 0 => {
+                let x = x.clamp(0, self.width as i16 - 1);
+                let y = y.clamp(0, self.height as i16 - 1);
+                let w = w.min(self.width - x as u16);
+                let h = h.min(self.height - y as u16);
+                (x, y, w.max(1), h.max(1))
+            }
+            _ => (0, 0, self.width, self.height),
+        };
         if let Some(shm) = self.shm.as_mut() {
-            // Straight RGBA8 -> premultiplied native-endian ARGB32.
-            for (dst, px) in
-                unsafe { std::slice::from_raw_parts_mut(shm.addr, expected / 4) }
+            // Straight RGBA8 -> premultiplied native-endian ARGB32, damage
+            // rows only (the rest of the segment already matches the
+            // screen).
+            let stride = self.width as usize * 4;
+            let segment =
+                unsafe { std::slice::from_raw_parts_mut(shm.addr, expected / 4) };
+            for row in dy..dy + dh as i16 {
+                let row_start = row as usize * stride + dx as usize * 4;
+                let row_end = row_start + dw as usize * 4;
+                for (dst, px) in segment[row_start / 4..row_end / 4]
                     .iter_mut()
-                    .zip(frame.chunks_exact(4))
-            {
-                *dst = rgba_to_premultiplied_argb(px);
+                    .zip(frame[row_start..row_end].chunks_exact(4))
+                {
+                    *dst = rgba_to_premultiplied_argb(px);
+                }
             }
             self.conn.shm_put_image(
                     self.wid,
                     self.gc,
                     self.width,
                     self.height,
-                    0,
-                    0,
-                    self.width,
-                    self.height,
-                    0,
-                    0,
+                    dx as u16,
+                    dy as u16,
+                    dw,
+                    dh,
+                    dx,
+                    dy,
                     depth,
                     x11rb::protocol::xproto::ImageFormat::Z_PIXMAP.into(),
                     false,
@@ -461,19 +495,24 @@ impl NotchWindow {
                 )?
                 .check()?;
         } else {
-            let mut pixels = Vec::with_capacity(expected);
-            for px in frame.chunks_exact(4) {
-                let argb = rgba_to_premultiplied_argb(px);
-                pixels.extend_from_slice(&argb.to_ne_bytes());
+            // The socket path converts and ships only the damage rows.
+            let stride = self.width as usize * 4;
+            let mut pixels = Vec::with_capacity(dw as usize * dh as usize * 4);
+            for row in dy..dy + dh as i16 {
+                let row_start = row as usize * stride + dx as usize * 4;
+                let row_end = row_start + dw as usize * 4;
+                for px in frame[row_start..row_end].chunks_exact(4) {
+                    pixels.extend_from_slice(&rgba_to_premultiplied_argb(px).to_ne_bytes());
+                }
             }
             self.conn.put_image(
                 x11rb::protocol::xproto::ImageFormat::Z_PIXMAP,
                 self.wid,
                 self.gc,
-                self.width,
-                self.height,
-                0,
-                0,
+                dw,
+                dh,
+                dx,
+                dy,
                 0,
                 depth,
                 &pixels,
@@ -503,11 +542,14 @@ impl NotchWindow {
         Ok(())
     }
 
-    /// Moves the window without resizing.
+    /// Moves the window without resizing. Fire-and-forget: the configure
+    /// request is flushed but its reply is not awaited — a drag issues one
+    /// move per motion event (60-120Hz), and a synchronous round trip per
+    /// move serializes the pointer stream behind the server. Configure
+    /// errors surface through the connection's event stream instead.
     pub fn move_window(&mut self, x: i16, y: i16) -> Result<(), HostError> {
         self.conn
-            .configure_window(self.wid, &ConfigureWindowAux::new().x(x as i32).y(y as i32))?
-            .check()?;
+            .configure_window(self.wid, &ConfigureWindowAux::new().x(x as i32).y(y as i32))?;
         self.conn.flush()?;
         Ok(())
     }

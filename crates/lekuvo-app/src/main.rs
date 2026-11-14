@@ -927,6 +927,336 @@ fn run_headless_snapshots(
     std::process::exit(0);
 }
 
+/// Loop counters behind `LEKUVO_PERF` (see the render/drag coupling log).
+#[derive(Default)]
+struct PerfCounters {
+    motions: u32,
+    drag_motions: u32,
+    moves: u32,
+    renders: u32,
+    renders_during_drag: u32,
+    presents: u32,
+}
+
+/// The present region for one frame: the renderer's damage window unioned
+/// with both frames' mascot sprite rects (sprites live outside the
+/// renderer's diff). `None` = present the whole surface. When the union
+/// covers most of the window the sub-rect is not worth its branching.
+fn damage_rect_union(
+    damage: Option<(u16, u16, u16, u16)>,
+    sprite_rects: &[Rectangle],
+    previous_sprite_rects: &[Rectangle],
+) -> Option<(i16, i16, u16, u16)> {
+    let (x, y, w, h) = damage?;
+    // Bounding union in i32 (mixed i16/u16 rect fields, window-clamped).
+    let (mut x0, mut y0) = (i32::from(x), i32::from(y));
+    let (mut x1, mut y1) = (x0 + i32::from(w), y0 + i32::from(h));
+    for rect in sprite_rects.iter().chain(previous_sprite_rects.iter()) {
+        let (rx, ry) = (i32::from(rect.x), i32::from(rect.y));
+        x0 = x0.min(rx);
+        y0 = y0.min(ry);
+        x1 = x1.max(rx + i32::from(rect.width));
+        y1 = y1.max(ry + i32::from(rect.height));
+    }
+    let (ux0, uy0) = (x0.clamp(0, i32::from(WIN_W)) as i16, y0.clamp(0, i32::from(WIN_H)) as i16);
+    let uw = (x1 - x0).clamp(0, i32::from(WIN_W)) as u16;
+    let uh = (y1 - y0).clamp(0, i32::from(WIN_H)) as u16;
+    let area = u32::from(uw) * u32::from(uh);
+    let total = u32::from(WIN_W) * u32::from(WIN_H);
+    if area * 5 >= total * 4 {
+        // 80% of the surface or more: the full put is cheaper than the
+        // per-row bookkeeping.
+        None
+    } else {
+        Some((ux0, uy0, uw, uh))
+    }
+}
+
+/// Offline pill↔card morph benchmark (frame-smoothness complaint): flips
+/// `expanded` and drives the transition at a 16ms host cadence — exactly
+/// the live loop's per-frame sequence (`step_animations_by` → `render` →
+/// the loop's `layout_facts` reads) — timing each frame. Enabled with
+/// `LEKUVO_BENCH_MORPH=<rounds>`; prints per-phase microsecond statistics
+/// and the frame-interval percentiles the 45fps gate needs, then exits.
+/// Needs a display only for the present phase; run under Xvfb with
+/// `LEKUVO_BENCH_MORPH_PRESENT=1` to include `win.present` in the frame.
+fn run_morph_bench(app_dir: &Path, settings: &Settings, rounds: usize) -> ! {
+    const FRAME: Duration = Duration::from_millis(16);
+    // How many `layout_facts` calls the live loop performs per rendered
+    // frame (mascot compositing + input rects + overlay rects). Kept in
+    // sync with the loop body.
+    const FACTS_PER_FRAME: usize = 3;
+    let mut view = build_app_view(app_dir);
+    let mut sprites = None;
+    let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).expect("viewport");
+    let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
+    write_calendar(&mut view, 0);
+    if let Err(error) = apply_theme(&mut view, &mut sprites, app_dir, &settings.theme) {
+        eprintln!("lekuvo: cannot apply theme: {error}");
+    }
+
+    // Optional present-inclusive mode: a real window on the current DISPLAY.
+    let mut present_win = if std::env::var_os("LEKUVO_BENCH_MORPH_PRESENT").is_some() {
+        Some(NotchWindow::create(&HostConfig { width: WIN_W, height: WIN_H, x: 0, y: 0 }).expect("X11 window for present bench"))
+    } else {
+        None
+    };
+    let mut frame_buffer: Vec<u8> = Vec::new();
+
+    let settle = |view: &mut VelquView| -> u32 {
+        let mut frames = 0u32;
+        while frames < 128 {
+            view.step_animations_by(Duration::from_millis(33));
+            let active = view.has_active_animations();
+            let _ = view.render(viewport);
+            frames += 1;
+            if !active && frames >= 2 {
+                break;
+            }
+        }
+        frames
+    };
+
+    // Start collapsed, settled.
+    let _ = view.render(viewport);
+    view.pump_reactive(&[]);
+    let _ = settle(&mut view);
+
+    // Warm-up: two full expand/collapse cycles (write → pump → settle,
+    // the snapshot harness's proven order).
+    for _ in 0..2 {
+        let _ = view.write_state("expanded", ReactiveValue::Bool(true));
+        view.pump_reactive(&[]);
+        let _ = settle(&mut view);
+        let _ = view.write_state("expanded", ReactiveValue::Bool(false));
+        view.pump_reactive(&[]);
+        let _ = settle(&mut view);
+    }
+
+    let mut render_us = Vec::<u128>::new();
+    let mut facts_us: Vec<u128> = Vec::new();
+    let mut frame_us: Vec<u128> = Vec::new(); // step + render + facts (+ present)
+    let mut interval_us: Vec<u128> = Vec::new(); // max(FRAME, frame cost)
+    let mut frames_per_morph: Vec<u32> = Vec::new();
+    let mut morph_ms: Vec<u128> = Vec::new();
+    let mut expanded = false;
+    for _ in 0..rounds {
+        expanded = !expanded;
+        let t0 = Instant::now();
+        let _ = view.write_state("expanded", ReactiveValue::Bool(expanded));
+        view.pump_reactive(&[]);
+        let _ = view.render(viewport);
+        if std::env::var_os("LEKUVO_DEBUG").is_some() {
+            eprintln!("morph bench: expanded={expanded} anims after swap render: {:?}", view.active_animations_debug());
+        }
+        let mut frames = 0u32;
+        // Drive the transition at the 16ms cadence for at most 800ms (the
+        // card's width/height transitions are ~400ms; delays may extend).
+        while t0.elapsed() < Duration::from_millis(800) {
+            let step_started = Instant::now();
+            view.step_animations_by(FRAME);
+            let active = view.has_active_animations();
+            let r0 = Instant::now();
+            let result = view.render(viewport).expect("render");
+            let r1 = Instant::now();
+            for _ in 0..FACTS_PER_FRAME {
+                let _ = view.layout_facts(viewport);
+            }
+            let f1 = Instant::now();
+            if let Some(win) = present_win.as_mut() {
+                frame_buffer.clear();
+                frame_buffer.extend_from_slice(result.frame.pixels());
+                win.present(&frame_buffer).expect("present");
+            }
+            let done = Instant::now();
+            render_us.push(r1.duration_since(r0).as_micros());
+            facts_us.push(f1.duration_since(r1).as_micros());
+            frame_us.push(done.duration_since(step_started).as_micros());
+            interval_us.push(done.duration_since(step_started).max(FRAME).as_micros());
+            frames += 1;
+            if std::env::var_os("LEKUVO_DEBUG").is_some() {
+                eprintln!("morph bench frame {frames}: active={active} anims={:?}", view.active_animations_debug());
+            }
+            if !active && frames >= 2 {
+                break;
+            }
+        }
+        frames_per_morph.push(frames);
+        morph_ms.push(t0.elapsed().as_millis());
+    }
+
+    let pct = |values: &[u128], q: f64| -> u128 {
+        let mut sorted = values.to_vec();
+        sorted.sort_unstable();
+        sorted[((sorted.len() as f64 - 1.0) * q).round() as usize]
+    };
+    let mean = |values: &[u128]| values.iter().sum::<u128>() / values.len().max(1) as u128;
+    let fps_of = |interval_ms: u128| 1000.0 / interval_ms as f64;
+    println!(
+        "lekuvo: morph bench: {rounds} expand/collapse morphs (release build, {WIN_W}x{WIN_H}, {} facts/frame{}, {} fps cadence)",
+        FACTS_PER_FRAME,
+        if present_win.is_some() { ", present included" } else { "" },
+        (1000.0 / FRAME.as_millis() as f64) as u32,
+    );
+    println!(
+        "  morph wall   : mean {:>6} ms   p95 {:>6} ms   frames/morph mean {:.1}",
+        mean(&morph_ms),
+        pct(&morph_ms, 0.95),
+        frames_per_morph.iter().sum::<u32>() as f64 / frames_per_morph.len().max(1) as f64,
+    );
+    println!(
+        "  render       : mean {:>6} us   p50 {:>6} us   p95 {:>6} us   max {:>7} us",
+        mean(&render_us),
+        pct(&render_us, 0.50),
+        pct(&render_us, 0.95),
+        render_us.iter().max().copied().unwrap_or(0),
+    );
+    println!(
+        "  facts x{FACTS_PER_FRAME}    : mean {:>6} us   p50 {:>6} us   p95 {:>6} us",
+        mean(&facts_us),
+        pct(&facts_us, 0.50),
+        pct(&facts_us, 0.95),
+    );
+    println!(
+        "  frame        : mean {:>6} us   p50 {:>6} us   p95 {:>6} us   max {:>7} us",
+        mean(&frame_us),
+        pct(&frame_us, 0.50),
+        pct(&frame_us, 0.95),
+        frame_us.iter().max().copied().unwrap_or(0),
+    );
+    let p95_interval = pct(&interval_us, 0.95);
+    let max_interval = interval_us.iter().max().copied().unwrap_or(0);
+    println!(
+        "  interval     : p50 {:>6} us   p95 {:>6} us   max {:>7} us   -> sustained ~{:.0} fps (p95), gate: p95 <= 22000 us",
+        pct(&interval_us, 0.50),
+        p95_interval,
+        max_interval,
+        fps_of(p95_interval),
+    );
+    std::process::exit(0);
+}
+
+/// Offline drag benchmark (bar-drag lag complaint): against a real X
+/// window (run under Xvfb), measures the three components of the drag
+/// path — `move_window` per motion event, the full render+present the
+/// Configure-echo path performed per move, and present alone. Enabled
+/// with `LEKUVO_BENCH_DRAG=<moves>`; requires DISPLAY. Reports the
+/// implied repaint rate during a 60Hz drag for both loop shapes.
+fn run_drag_bench(app_dir: &Path, settings: &Settings, moves: usize) -> ! {
+    const FRAME: Duration = Duration::from_nanos(16_666_667); // 60Hz motion
+    let mut view = build_app_view(app_dir);
+    let mut sprites = None;
+    let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).expect("viewport");
+    let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
+    if let Err(error) = apply_theme(&mut view, &mut sprites, app_dir, &settings.theme) {
+        eprintln!("lekuvo: cannot apply theme: {error}");
+    }
+    let _ = view.render(viewport);
+    view.pump_reactive(&[]);
+    let mut win = NotchWindow::create(&HostConfig { width: WIN_W, height: WIN_H, x: 0, y: 0 })
+        .expect("X11 overlay window");
+    let mut frame_buffer: Vec<u8> = Vec::new();
+    let result = view.render(viewport).expect("render");
+    frame_buffer.extend_from_slice(result.frame.pixels());
+    win.present(&frame_buffer).expect("first present");
+
+    let pct = |values: &[u128], q: f64| -> u128 {
+        let mut sorted = values.to_vec();
+        sorted.sort_unstable();
+        sorted[((sorted.len() as f64 - 1.0) * q).round() as usize]
+    };
+    let mean = |values: &[u128]| values.iter().sum::<u128>() / values.len().max(1) as u128;
+
+    // Phase A: move only (the drag fix — content static, no repaints).
+    let mut move_us: Vec<u128> = Vec::new();
+    let started = Instant::now();
+    for i in 0..moves {
+        let target = started + FRAME * (i as u32 + 1);
+        let now = Instant::now();
+        if now < target {
+            std::thread::sleep(target - now);
+        }
+        let m0 = Instant::now();
+        let _ = win.move_window(100 + (i % 40) as i16, 100 + (i % 20) as i16);
+        move_us.push(m0.elapsed().as_micros());
+    }
+    let move_wall = started.elapsed();
+
+    // Phase B: move + render + present (the pre-fix Configure-echo path:
+    // every WM echo marked the frame dirty and ran the whole pipeline).
+    let mut echo_us = Vec::<u128>::new();
+    let mut render_us = Vec::<u128>::new();
+    let mut present_us = Vec::<u128>::new();
+    let started = Instant::now();
+    for i in 0..moves {
+        let target = started + FRAME * (i as u32 + 1);
+        let now = Instant::now();
+        if now < target {
+            std::thread::sleep(target - now);
+        }
+        let e0 = Instant::now();
+        let _ = win.move_window(200 + (i % 40) as i16, 120 + (i % 20) as i16);
+        let r0 = Instant::now();
+        let result = view.render(viewport).expect("render");
+        let p0 = Instant::now();
+        frame_buffer.clear();
+        frame_buffer.extend_from_slice(result.frame.pixels());
+        win.present(&frame_buffer).expect("present");
+        let p1 = Instant::now();
+        render_us.push(p0.duration_since(r0).as_micros());
+        present_us.push(p1.duration_since(p0).as_micros());
+        echo_us.push(e0.elapsed().as_micros());
+    }
+    let echo_wall = started.elapsed();
+
+    // Phase C: present alone at 60Hz (static content, full-frame put).
+    let mut put_us: Vec<u128> = Vec::new();
+    let started = Instant::now();
+    for i in 0..moves {
+        let target = started + FRAME * (i as u32 + 1);
+        let now = Instant::now();
+        if now < target {
+            std::thread::sleep(target - now);
+        }
+        let p0 = Instant::now();
+        win.present(&frame_buffer).expect("present");
+        put_us.push(p0.elapsed().as_micros());
+    }
+    let put_wall = started.elapsed();
+
+    let secs = |d: Duration| d.as_secs_f64();
+    println!("lekuvo: drag bench: {moves} moves at 60Hz under the current DISPLAY");
+    println!(
+        "  move only          : mean {:>6} us   p95 {:>6} us   wall {:.2}s ({:.0} moves/s)",
+        mean(&move_us),
+        pct(&move_us, 0.95),
+        secs(move_wall),
+        moves as f64 / secs(move_wall),
+    );
+    println!(
+        "  move+render+present: mean {:>6} us   p95 {:>6} us   max {:>7} us   wall {:.2}s ({:.0}/s)  [render mean {} us, present mean {} us]",
+        mean(&echo_us),
+        pct(&echo_us, 0.95),
+        echo_us.iter().max().copied().unwrap_or(0),
+        secs(echo_wall),
+        moves as f64 / secs(echo_wall),
+        mean(&render_us),
+        mean(&present_us),
+    );
+    println!(
+        "  present only       : mean {:>6} us   p95 {:>6} us   wall {:.2}s",
+        mean(&put_us),
+        pct(&put_us, 0.95),
+        secs(put_wall),
+    );
+    println!(
+        "  implied drag repaints/s: echo-coupled loop {:.0}, static-content loop 0",
+        moves as f64 / secs(echo_wall),
+    );
+    std::process::exit(0);
+}
+
+
 /// Offline tab-switch benchmark (debug timing for the "too slow" complaint):
 /// expands the card, then cycles the tab state through all ten panels N
 /// times, timing each switch the way the live loop performs it — one
@@ -1097,6 +1427,27 @@ fn main() {
         run_tab_bench(&app_dir, &settings, rounds);
     }
 
+    // Offline morph benchmark (frame smoothness); exits before any window
+    // unless LEKUVO_BENCH_MORPH_PRESENT=1 opens a present target.
+    if let Some(rounds) = std::env::var_os("LEKUVO_BENCH_MORPH") {
+        let rounds = rounds
+            .to_string_lossy()
+            .parse::<usize>()
+            .unwrap_or(20)
+            .clamp(1, 10_000);
+        run_morph_bench(&app_dir, &settings, rounds);
+    }
+
+    // Offline drag benchmark; needs a DISPLAY (Xvfb works).
+    if let Some(moves) = std::env::var_os("LEKUVO_BENCH_DRAG") {
+        let moves = moves
+            .to_string_lossy()
+            .parse::<usize>()
+            .unwrap_or(120)
+            .clamp(1, 100_000);
+        run_drag_bench(&app_dir, &settings, moves);
+    }
+
     // --- VelquView document ------------------------------------------------
     let mut view = build_app_view(&app_dir);
     let art_path = settings_art_cache();
@@ -1238,6 +1589,20 @@ fn main() {
     let mut live: &'static str = "idle";
     let mut exit_armed = false;
     let mut cal_offset: i32 = 0;
+    // LEKUVO_PERF loop counters: drag/render coupling made visible. One
+    // stderr line per second — motion events received, XMoveWindow calls
+    // issued (the drag branch), full renders and presents performed, and
+    // how many renders happened while the drag was in flight.
+    let perf_on = std::env::var_os("LEKUVO_PERF").is_some_and(|v| v != "0");
+    let mut perf = PerfCounters::default();
+    let mut last_perf_log = Instant::now();
+    // Partial-damage presentation: sprite rects composited over the last
+    // PRESENTED frame (they are not part of the renderer's damage diff, so
+    // each present unions them in — both frames' rects, since the sprite
+    // can move or disappear). An Expose invalidates the screen's copy and
+    // forces one full present.
+    let mut last_sprite_rects: Vec<Rectangle> = Vec::new();
+    let mut full_present_needed = true;
     write_focus(&mut view, &focus);
     write_calendar(&mut view, cal_offset);
     let debug_mode = std::env::var_os("LEKUVO_DEBUG").is_some();
@@ -1261,12 +1626,17 @@ fn main() {
             }
         }
         if view.has_active_animations() {
-            // Ambient animation cadence: 30fps, not 60 — CSS pulses,
-            // fades, and mascot sprites are all slow-moving, and every
-            // animation frame is a full-window repaint in the software
-            // renderer, so halving the cadence halves the idle cost of
-            // any visible loop without visible stutter.
-            deadline = deadline.min(Duration::from_millis(33));
+            // Two-tier animation cadence: width/height transitions (the
+            // pill↔card morph) reshape the silhouette every tick and run
+            // at the ~60fps tier; paint-only loops (pulses, fades, mascot
+            // sprites are host-driven anyway) are slow-moving and stay at
+            // the ambient 30fps, halving their idle cost.
+            let cadence = if view.has_layout_animation() {
+                Duration::from_millis(16)
+            } else {
+                Duration::from_millis(33)
+            };
+            deadline = deadline.min(cadence);
         }
         // Sub-millisecond deadlines must not truncate to zero: a
         // zero-timeout poll returns immediately and spins the loop.
@@ -1287,6 +1657,8 @@ fn main() {
             debug_events.push(format!("{:?}", event));
             match event {
                 HostEvent::Motion { x, y, rx, ry } => {
+                    perf.motions += 1;
+                    perf.drag_motions += u32::from(dragging);
                     if let Some((axr, ayr, _, _)) = press_anchor
                         && !dragging
                         && (rx - axr).abs() + (ry - ayr).abs() > DRAG_THRESHOLD
@@ -1299,6 +1671,7 @@ fn main() {
                         let nx = wx + (rx - axr) as i16;
                         let ny = wy + (ry - ayr) as i16;
                         let _ = win.move_window(nx, ny);
+                        perf.moves += 1;
                         window_at = (nx, ny);
                     } else {
                         let changed = view.pointer_move(viewport, x, y);
@@ -1396,7 +1769,13 @@ fn main() {
                     dirty = true;
                     view.wheel(viewport, x, y, 0.0, dy);
                 }
-                HostEvent::Expose => dirty = true,
+                HostEvent::Expose => {
+                    dirty = true;
+                    // The screen's pixels outside the compositor's report
+                    // are unknown: the next present must ship the whole
+                    // surface.
+                    full_present_needed = true;
+                }
                 HostEvent::Configure(geometry) => {
                     // Geometry drift guard: a hostile WM move is undone.
                     // Debounced: Mutter echoes the PRE-move geometry right
@@ -2075,13 +2454,19 @@ fn main() {
                     && next <= now.duration_since(last_present).as_millis() as u64 + 1
             }
         };
-        if dirty || view.has_active_animations() || mascot_frame_due {
+        if (dirty || view.has_active_animations() || mascot_frame_due) && !dragging {
+            perf.renders += 1;
             let dt = now.duration_since(last_anim_step);
             last_anim_step = now;
             view.step_animations_by(dt);
             if let Ok(result) = view.render(viewport) {
                 frame_buffer.clear();
                 frame_buffer.extend_from_slice(result.frame.pixels());
+                // Sprite rects composited this frame — they ride outside
+                // the renderer's document damage, so the present unions
+                // them (and the previous frame's, for moved/disappeared
+                // sprites) into the update region.
+                let mut sprite_rects: Vec<Rectangle> = Vec::new();
                 if let Some(sprites) = sprites.as_ref()
                     && !is_tucked
                     && let Ok(facts) = view.layout_facts(viewport)
@@ -2103,6 +2488,12 @@ fn main() {
                                 sw,
                                 sh,
                             );
+                            sprite_rects.push(Rectangle {
+                                x: fact.x as i16,
+                                y: fact.y as i16,
+                                width: fact.width as u16,
+                                height: fact.height as u16,
+                            });
                         }
                     }
                 }
@@ -2133,9 +2524,24 @@ fn main() {
                         }
                     }
                 }
-                if win.present(&frame_buffer).is_err() {
+                // Present the bounding union of the renderer's damage
+                // window and both frames' sprite rects; an Expose
+                // invalidates the screen's copy, so it forces one full
+                // present.
+                let present_damage = if full_present_needed {
+                    None
+                } else {
+                    damage_rect_union(result.stats.damage, &sprite_rects, &last_sprite_rects)
+                };
+                last_sprite_rects = sprite_rects;
+                if win
+                    .present_with_damage(&frame_buffer, present_damage)
+                    .is_err()
+                {
                     running = false;
                 }
+                full_present_needed = false;
+                perf.presents += 1;
                 last_present = now;
             }
             dirty = false;
@@ -2162,7 +2568,7 @@ fn main() {
                         y: f.y as i16,
                         width: f.width as u16,
                         height: f.height as u16,
-                    })
+                    }).filter(|r| r.width > 0 && r.height > 0)
                 };
                 pill_rect = fact_rect("pill");
                 overlay_rects = ["pill", "card", "toast"]
@@ -2178,6 +2584,21 @@ fn main() {
                 input_key_applied = Some(key);
                 let _ = win.set_input_region(&rects);
             }
+        }
+
+        if perf_on && now.duration_since(last_perf_log) >= Duration::from_secs(1) {
+            eprintln!(
+                "lekuvo-perf: motions={} drag_motions={} moves={} renders={} (during drag {}) presents={} frames_total={}",
+                perf.motions,
+                perf.drag_motions,
+                perf.moves,
+                perf.renders,
+                perf.renders_during_drag,
+                perf.presents,
+                view.frames_rendered(),
+            );
+            perf = PerfCounters::default();
+            last_perf_log = now;
         }
     }
 
@@ -2246,6 +2667,9 @@ fn input_rects(view: &mut VelquView, viewport: Viewport, mode: InputMode) -> Vec
                 width: fact.width as u16 + (pad as u16) * 2,
                 height: fact.height as u16 + (pad as u16) * 2,
             })
+            // The morphing card collapses to height 0; a zero-area fixture
+            // is invisible and must not catch pointer input.
+            .filter(|rect| rect.width > (pad as u16) * 2 && rect.height > (pad as u16) * 2)
     };
     // Hidden `vx-show` elements leave no layout facts, so the toast only
     // contributes a rectangle while it is actually visible.
