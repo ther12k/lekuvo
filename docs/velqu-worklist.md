@@ -80,3 +80,10 @@ bench is the honest gate.
 10. **Text vertical centering in flex/pill shapes**: text sits off-center inside
     buttons/pills (baseline vs content-box math). App mitigation: line-height:1
     on .lk-btn. Needs correct baseline/line-box handling in text layout.
+
+## P0 addition 11 (found 2026-11-15, blocks washes + hanging mascot)
+11. **position:absolute must remove children from flow**: the compiler accepts
+    `absolute` but the layout engine keeps those children in flow (an inset-0
+    overlay adds a full-size flex box; the hanging mascot shifts the footer).
+    Needed: out-of-flow positioning with relative-parent coordinates + z-order.
+    (Interim hacks in the app: negative-margin overlap for the mascot — fragile.)
