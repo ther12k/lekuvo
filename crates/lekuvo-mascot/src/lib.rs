@@ -224,6 +224,13 @@ impl MoodController {
         self.current
     }
 
+    /// Whether a temporary reaction (wave, alert, …) is still running.
+    /// Hosts use this to keep sprite playback alive while a one-shot
+    /// mood plays out, even when the ambient loop is gated off.
+    pub fn reacting(&self) -> bool {
+        self.temporary.is_some()
+    }
+
     /// The controller clock (ms since launch).
     pub fn clock_ms(&self) -> u64 {
         self.clock_ms
@@ -421,10 +428,14 @@ impl Strip {
     }
 
     /// Milliseconds until the next frame boundary from `elapsed_ms`
-    /// (used for redraw scheduling).
+    /// (used for redraw scheduling). A finished one-shot holds its
+    /// final frame forever, so it owes no further redraws.
     fn ms_to_next_frame(&self, elapsed_ms: u64) -> u64 {
         let frame_ms = self.frame_ms();
         if frame_ms == u64::MAX {
+            return u64::MAX;
+        }
+        if !self.looping && elapsed_ms >= self.duration_ms {
             return u64::MAX;
         }
         frame_ms - (elapsed_ms % frame_ms)
@@ -905,6 +916,28 @@ mod tests {
     fn index_for(store: &SpriteStore, mood: Mood, variant: &str, elapsed: u64) -> usize {
         let strip = store.strip(mood, variant).unwrap();
         strip.frame_index(elapsed)
+    }
+
+    #[test]
+    fn finished_one_shot_owes_no_redraw() {
+        // A completed non-looping strip holds its last frame; scheduling
+        // must report "no next frame" instead of ticking forever (the
+        // idle frame pump slept only when ms_to_next_frame said MAX).
+        let strip = Strip {
+            width: 4,
+            height: 4,
+            frames: vec![vec![0; 4 * 4 * 4]; 4],
+            duration_ms: 480,
+            looping: false,
+        };
+        assert!(strip.ms_to_next_frame(100) <= 120);
+        assert_eq!(strip.ms_to_next_frame(479), 1);
+        assert_eq!(strip.ms_to_next_frame(480), u64::MAX);
+        assert_eq!(strip.ms_to_next_frame(60_000), u64::MAX);
+
+        // Looping strips never stop owing frames.
+        let looping = Strip { looping: true, ..strip };
+        assert!(looping.ms_to_next_frame(60_000) != u64::MAX);
     }
 
     #[test]

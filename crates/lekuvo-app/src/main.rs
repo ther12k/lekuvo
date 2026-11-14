@@ -720,18 +720,11 @@ fn apply_theme(
     Ok(())
 }
 
-/// Offline scene capture: renders the canonical UI states to PNGs
-/// without creating any window. Enabled with
-/// `LEKUVO_SNAPSHOT_HEADLESS=<out-dir>`; writes `pill.png`, `music.png`,
-/// `system.png`, and `dusk.png`, then exits. Mascot frames composite the
-/// same way the live loop does, so the captures match the real UI.
-fn run_headless_snapshots(
-    app_dir: &Path,
-    mascot_dir: &Path,
-    settings: &Settings,
-    out_dir: &Path,
-) -> ! {
-    std::fs::create_dir_all(out_dir).expect("snapshot output dir");
+/// Builds the VelquView document exactly like the live loop: reactive
+/// tailwind, the sandboxed asset resolver, `index.html`, every
+/// non-theme stylesheet (sorted, like the loader in `main`), and the
+/// bundled fonts. Shared by the offline snapshot and bench modes.
+fn build_app_view(app_dir: &Path) -> VelquView {
     let mut view = VelquView::new();
     view.enable_tailwind();
     view.enable_reactive();
@@ -774,6 +767,22 @@ fn run_headless_snapshots(
         eprintln!("lekuvo: reactive: {diagnostic}");
     }
     register_fonts(&mut view, app_dir);
+    view
+}
+
+/// Offline scene capture: renders the canonical UI states to PNGs
+/// without creating any window. Enabled with
+/// `LEKUVO_SNAPSHOT_HEADLESS=<out-dir>`; writes `pill.png`, `music.png`,
+/// `system.png`, and `dusk.png`, then exits. Mascot frames composite the
+/// same way the live loop does, so the captures match the real UI.
+fn run_headless_snapshots(
+    app_dir: &Path,
+    mascot_dir: &Path,
+    settings: &Settings,
+    out_dir: &Path,
+) -> ! {
+    std::fs::create_dir_all(out_dir).expect("snapshot output dir");
+    let mut view = build_app_view(app_dir);
     let mut sprites = SpriteStore::load(mascot_dir)
         .map_err(|e| eprintln!("lekuvo: {e}"))
         .ok();
@@ -918,6 +927,156 @@ fn run_headless_snapshots(
     std::process::exit(0);
 }
 
+/// Offline tab-switch benchmark (debug timing for the "too slow" complaint):
+/// expands the card, then cycles the tab state through all ten panels N
+/// times, timing each switch the way the live loop performs it — one
+/// `tab` state write, one reactive pump, the swap render, then the
+/// settle renders until the document runs out of active transitions.
+/// Enabled with `LEKUVO_BENCH_TABS=<rounds>`; prints per-phase
+/// microsecond statistics, then exits. The mascot is not composited
+/// (its cadence is host-driven and measured separately by idle CPU).
+fn run_tab_bench(app_dir: &Path, settings: &Settings, rounds: usize) -> ! {
+    const TABS: [&str; 10] = [
+        "music", "focus", "todo", "board", "mixer", "noise", "mirror", "system", "ai", "home",
+    ];
+    let mut view = build_app_view(app_dir);
+    let mut sprites = None; // theme application wants the slot; no compositing here
+    let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).expect("viewport");
+    let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
+    write_calendar(&mut view, 0);
+    if let Err(error) = apply_theme(&mut view, &mut sprites, app_dir, &settings.theme) {
+        eprintln!("lekuvo: cannot apply theme: {error}");
+    }
+
+    let settle = |view: &mut VelquView| -> u32 {
+        let mut frames = 0u32;
+        // Mirrors the live loop's order: step_animations_by runs BEFORE
+        // the render decision, and vx-transition phase machines only
+        // advance inside that step — so the two warm-up steps exist to
+        // carry pending EnterStart/LeaveStart phases into their spawned
+        // animations before has_active_animations() can see them.
+        while frames < 128 {
+            view.step_animations_by(Duration::from_millis(33));
+            let active = view.has_active_animations();
+            let _ = view.render(viewport);
+            frames += 1;
+            if !active && frames >= 2 {
+                break;
+            }
+        }
+        frames
+    };
+
+    // Expanded card on the music tab, fully settled.
+    let _ = view.write_state("expanded", ReactiveValue::Bool(true));
+    let _ = view.write_state("tab", ReactiveValue::String("music".to_owned()));
+    let _ = view.render(viewport);
+    view.pump_reactive(&[]);
+    let _ = settle(&mut view);
+
+    // Warm-up: two full cycles so caches and style paths are hot.
+    for round in 0..(2 * TABS.len()) {
+        let tab = TABS[round % TABS.len()];
+        let _ = view.write_state("tab", ReactiveValue::String(tab.to_owned()));
+        let _ = view.render(viewport);
+        view.pump_reactive(&[]);
+        let _ = settle(&mut view);
+    }
+
+    #[derive(Default)]
+    struct Stats {
+        write: Vec<u128>,
+        pump: Vec<u128>,
+        swap: Vec<u128>,
+        settle: Vec<u128>,
+        frames: Vec<u32>,
+    }
+    let mut stats = Stats::default();
+    let mut idle_render: Vec<u128> = Vec::new();
+    let mut per_tab: Vec<(String, u128, u32)> = Vec::new();
+    for round in 0..rounds {
+        let tab = TABS[round % TABS.len()];
+        let t0 = Instant::now();
+        let _ = view.write_state("tab", ReactiveValue::String(tab.to_owned()));
+        let t1 = Instant::now();
+        view.pump_reactive(&[]);
+        let t2 = Instant::now();
+        let _ = view.render(viewport);
+        let t3 = Instant::now();
+        let frames = settle(&mut view);
+        let t4 = Instant::now();
+        // A render with no state change behind it (the loop's idle cost).
+        let t5 = Instant::now();
+        let _ = view.render(viewport);
+        let t6 = Instant::now();
+        stats.write.push(t1.duration_since(t0).as_micros());
+        stats.pump.push(t2.duration_since(t1).as_micros());
+        stats.swap.push(t3.duration_since(t2).as_micros());
+        stats.settle.push(t4.duration_since(t3).as_micros());
+        stats.frames.push(frames);
+        idle_render.push(t6.duration_since(t5).as_micros());
+        per_tab.push((tab.to_owned(), t4.duration_since(t0).as_micros(), frames));
+    }
+    for (tab, total, frames) in &per_tab[..per_tab.len().min(TABS.len())] {
+        println!("  switch to {tab:<7}: total {total:>8} us, {frames} settle frames");
+    }
+
+    let pct = |values: &[u128], q: f64| -> u128 {
+        let mut sorted = values.to_vec();
+        sorted.sort_unstable();
+        sorted[((sorted.len() as f64 - 1.0) * q).round() as usize]
+    };
+    let mean = |values: &[u128]| -> u128 {
+        values.iter().sum::<u128>() / values.len().max(1) as u128
+    };
+    println!("lekuvo: tab bench: {rounds} switches (release build, {WIN_W}x{WIN_H})");
+    println!(
+        "  state write : mean {:>6} us   p50 {:>6} us   p95 {:>6} us",
+        mean(&stats.write),
+        pct(&stats.write, 0.50),
+        pct(&stats.write, 0.95),
+    );
+    println!(
+        "  pump        : mean {:>6} us   p50 {:>6} us   p95 {:>6} us",
+        mean(&stats.pump),
+        pct(&stats.pump, 0.50),
+        pct(&stats.pump, 0.95),
+    );
+    println!(
+        "  swap render : mean {:>6} us   p50 {:>6} us   p95 {:>6} us",
+        mean(&stats.swap),
+        pct(&stats.swap, 0.50),
+        pct(&stats.swap, 0.95),
+    );
+    println!(
+        "  settle      : mean {:>6} us   p50 {:>6} us   p95 {:>6} us   frames mean {:.1}",
+        mean(&stats.settle),
+        pct(&stats.settle, 0.50),
+        pct(&stats.settle, 0.95),
+        stats.frames.iter().sum::<u32>() as f64 / stats.frames.len().max(1) as f64,
+    );
+    let totals: Vec<u128> = stats
+        .write
+        .iter()
+        .zip(&stats.pump)
+        .zip(&stats.swap)
+        .zip(&stats.settle)
+        .map(|(((w, p), s), e)| w + p + s + e)
+        .collect();
+    println!(
+        "  TOTAL       : mean {:>6} us   p50 {:>6} us   p95 {:>6} us",
+        mean(&totals),
+        pct(&totals, 0.50),
+        pct(&totals, 0.95),
+    );
+    println!(
+        "  idle render : mean {:>6} us   p50 {:>6} us",
+        mean(&idle_render),
+        pct(&idle_render, 0.50),
+    );
+    std::process::exit(0);
+}
+
 fn main() {
     let (app_dir, mascot_dir) = discover_resources();
     let mut settings = load_settings();
@@ -928,49 +1087,19 @@ fn main() {
         run_headless_snapshots(&app_dir, &mascot_dir, &settings, Path::new(&out_dir));
     }
 
-    // --- VelquView document ------------------------------------------------
-    let mut view = VelquView::new();
-    view.enable_tailwind();
-    view.enable_reactive();
-    let art_path = settings_art_cache();
-    view.set_asset_resolver(Rc::new(DirAssets {
-        root: app_dir.clone(),
-        art_path: art_path.clone(),
-    }));
-    let html = std::fs::read_to_string(app_dir.join("index.html"))
-        .unwrap_or_else(|error| panic!("read {}: {error}", app_dir.join("index.html").display()));
-    view.load_document(
-        DocumentSource::new("lekuvo", html).with_base(app_dir.to_string_lossy().to_string()),
-    )
-    .expect("document loads");
-    let mut stylesheets: Vec<PathBuf> = std::fs::read_dir(&app_dir)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| entry.ok().map(|e| e.path()))
-        .filter(|path| path.extension().is_some_and(|ext| ext == "css"))
-        // theme-*.css are swapped at runtime by `apply_theme`; never
-        // batch-loaded, or alphabetical order would pin the last theme.
-        .filter(|path| !path.file_name().is_some_and(|name| name.to_string_lossy().starts_with("theme-")))
-        .collect();
-    stylesheets.sort();
-    for path in &stylesheets {
-        let css = std::fs::read_to_string(path).unwrap_or_default();
-        let _ = view.load_stylesheet(StylesheetSource::new(
-            path.file_name().unwrap_or_default().to_string_lossy().to_string(),
-            css,
-        ));
-    }
-    for diagnostic in view.css_diagnostics() {
-        eprintln!("lekuvo: css: {diagnostic}");
-    }
-    for diagnostic in view.tailwind_diagnostics() {
-        eprintln!("lekuvo: tailwind: {diagnostic}");
-    }
-    for diagnostic in view.reactive_diagnostics() {
-        eprintln!("lekuvo: reactive: {diagnostic}");
+    // Offline tab-switch benchmark (debug timing); exits before any window.
+    if let Some(rounds) = std::env::var_os("LEKUVO_BENCH_TABS") {
+        let rounds = rounds
+            .to_string_lossy()
+            .parse::<usize>()
+            .unwrap_or(50)
+            .clamp(1, 10_000);
+        run_tab_bench(&app_dir, &settings, rounds);
     }
 
-    register_fonts(&mut view, &app_dir);
+    // --- VelquView document ------------------------------------------------
+    let mut view = build_app_view(&app_dir);
+    let art_path = settings_art_cache();
 
     let sprites = SpriteStore::load(&mascot_dir)
         .map_err(|e| eprintln!("lekuvo: {e}"))
@@ -1077,6 +1206,9 @@ fn main() {
     let mut last_activity = Instant::now();
     let mut last_above = Instant::now() - ABOVE_TICK;
     let mut last_clock = Instant::now() - CLOCK_TICK;
+    // The clock text last pushed into the document (HH:MM flips once a
+    // minute; the tick compares against it to skip no-op writes).
+    let mut clock_text = local_hhmm();
     let mut last_anim_step = Instant::now();
     let mut last_present = Instant::now() - Duration::from_millis(1000);
     // Controller clock: ms since launch, NEVER reset — reaction deadlines
@@ -1129,7 +1261,12 @@ fn main() {
             }
         }
         if view.has_active_animations() {
-            deadline = deadline.min(Duration::from_millis(16));
+            // Ambient animation cadence: 30fps, not 60 — CSS pulses,
+            // fades, and mascot sprites are all slow-moving, and every
+            // animation frame is a full-window repaint in the software
+            // renderer, so halving the cadence halves the idle cost of
+            // any visible loop without visible stutter.
+            deadline = deadline.min(Duration::from_millis(33));
         }
         // Sub-millisecond deadlines must not truncate to zero: a
         // zero-timeout poll returns immediately and spins the loop.
@@ -1395,16 +1532,31 @@ fn main() {
             dirty = true;
         }
 
-        // Clock + focus tick.
+        // Clock + focus tick. Every write here used to mark the frame
+        // dirty unconditionally, which forced a full-window repaint per
+        // second even with the card closed and nothing running; the
+        // gates below keep the 1 Hz wakeup but only repaint when some
+        // visible pixel actually changes (the clock text flips once a
+        // minute; media position only advances while playing or shown).
         if now.duration_since(last_clock) >= CLOCK_TICK {
             last_clock = now;
-            let _ = view.write_state("clock", ReactiveValue::String(local_hhmm()));
+            let expanded = view
+                .reactive_state()
+                .map(|s| s.get_path("expanded").truthy())
+                .unwrap_or(false);
+            let hhmm = local_hhmm();
+            if hhmm != clock_text {
+                clock_text = hhmm.clone();
+                let _ = view.write_state("clock", ReactiveValue::String(hhmm));
+                dirty = true;
+            }
             if debug_mode {
                 let anims = view.active_animations_debug();
                 eprintln!("lekuvo: active anims: {anims:?}");
             }
-            dirty = true;
+            let mut focus_changed = false;
             if let Some(phase) = focus.tick() {
+                focus_changed = true;
                 match phase {
                     FocusPhase::FocusDone => {
                         show_toast(
@@ -1427,10 +1579,17 @@ fn main() {
                 toast_deadline = Some(now + TOAST_LINGER);
                 moods.trigger(lekuvo_mascot::AppEvent::PointerWave);
             }
-            write_focus(&mut view, &focus);
+            // The focus clock only advances while running; a paused
+            // timer re-writing identical state every second is pure cost.
+            if focus.running || focus_changed {
+                write_focus(&mut view, &focus);
+                dirty = true;
+            }
             // Advancing playback position (1 Hz re-stamp of the media
-            // interpolation base into the document).
-            if has_media_state {
+            // interpolation base into the document): the pill shows it
+            // while music plays, the card while it is open. Paused and
+            // collapsed, the triple is frozen — skip the writes.
+            if has_media_state && (expanded || media_playing) {
                 let (pos, left, pct) = playback_display(
                     media_pos_us,
                     media_dur_us,
@@ -1442,8 +1601,10 @@ fn main() {
                 let _ = view.write_state("media.pos", ReactiveValue::String(pos));
                 let _ = view.write_state("media.left", ReactiveValue::String(left));
                 let _ = view.write_state("media.pct", ReactiveValue::Number(pct));
-                // Synced-lyrics window: five slots around the current line.
-                if !lyric_lines.is_empty() {
+                dirty = true;
+                // Synced-lyrics window: five slots around the current
+                // line (rendered only inside the expanded music tab).
+                if expanded && !lyric_lines.is_empty() {
                     let pos_now = pos_us_now(media_pos_us, media_dur_us, media_playing, media_rate, media_stamped, now);
                     let current = lyric_lines
                         .iter()
@@ -1466,9 +1627,6 @@ fn main() {
                             &format!("lyrics.c{}", slot + 2),
                             ReactiveValue::Bool(is_cur),
                         );
-                    }
-                    if live == "music" || media_playing {
-                        dirty = true;
                     }
                 }
             }
@@ -1523,14 +1681,19 @@ fn main() {
             if now.duration_since(last_ghome_poll) >= GHOME_POLL {
                 last_ghome_poll = now;
                 let _ = collectors.cmd_tx.send(CollectorCmd::Ghome { action: None, id: None });
+                let _ = view.write_state("home.busy", ReactiveValue::Bool(true));
             }
             while let Ok(message) = collectors.msg_rx.try_recv() {
                 match message {
                     collectors::CollectorMsg::Ai(Ok(raw)) => write_ai_state(&mut view, &raw),
                     collectors::CollectorMsg::Ai(Err(error)) => write_ai_error(&mut view, &error),
-                    collectors::CollectorMsg::Ghome(Ok(raw)) => write_ghome_state(&mut view, &raw),
+                    collectors::CollectorMsg::Ghome(Ok(raw)) => {
+                        write_ghome_state(&mut view, &raw);
+                        let _ = view.write_state("home.busy", ReactiveValue::Bool(false));
+                    }
                     collectors::CollectorMsg::Ghome(Err(error)) => {
-                        write_ghome_error(&mut view, &error)
+                        write_ghome_error(&mut view, &error);
+                        let _ = view.write_state("home.busy", ReactiveValue::Bool(false));
                     }
                 }
                 dirty = true;
@@ -1774,6 +1937,7 @@ fn main() {
                             let _ = collectors
                                 .cmd_tx
                                 .send(CollectorCmd::Ghome { action: None, id: None });
+                            let _ = view.write_state("home.busy", ReactiveValue::Bool(true));
                             last_ghome_poll = now;
                         }
                     }
@@ -1886,17 +2050,30 @@ fn main() {
                 .reactive_state()
                 .map(|s| s.get_path("expanded").truthy())
                 .unwrap_or(false);
-            // Both variants animate while expanded; only compact otherwise.
-            let variants: &[&str] = if expanded {
-                &["compact", "full"]
+            // Ambient gating: a closed pill with no live activity is the
+            // napping state ("Lekuvo is napping…") — the lazy/sleep loops
+            // are slow breathing cycles that cost a full-window repaint
+            // per frame for a 44px sprite, so the mascot holds a static
+            // frame there. Live activities (music, focus) and temporary
+            // reactions (wave, alert, …) still animate, as does any
+            // expanded card.
+            let ambient = !expanded && live == "idle" && !media_playing && !focus.running;
+            if ambient && !moods.reacting() {
+                false
             } else {
-                &["compact"]
-            };
-            let next = sprites
-                .as_ref()
-                .map(|s| s.ms_to_next_frame(moods.mood(), variants, mascot_elapsed))
-                .unwrap_or(u64::MAX);
-            next != u64::MAX && next <= now.duration_since(last_present).as_millis() as u64 + 1
+                // Both variants animate while expanded; only compact otherwise.
+                let variants: &[&str] = if expanded {
+                    &["compact", "full"]
+                } else {
+                    &["compact"]
+                };
+                let next = sprites
+                    .as_ref()
+                    .map(|s| s.ms_to_next_frame(moods.mood(), variants, mascot_elapsed))
+                    .unwrap_or(u64::MAX);
+                next != u64::MAX
+                    && next <= now.duration_since(last_present).as_millis() as u64 + 1
+            }
         };
         if dirty || view.has_active_animations() || mascot_frame_due {
             let dt = now.duration_since(last_anim_step);

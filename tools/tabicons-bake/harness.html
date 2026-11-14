@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>tab icon bake</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+    /* One row per tint (white for idle tabs, notch ink for the active
+       pill), one 64px cell per tab, data.ts TABS order. */
+    .row { display: flex; }
+    .cell { width: var(--slot); height: var(--slot); overflow: hidden; }
+    .cell svg { display: block; }
+  </style>
+</head>
+<body>
+  <!--
+    Bakes the ten notch tab icons into one grid so a single headless
+    Chromium screenshot (transparent background) captures everything;
+    bake.sh slices the cells into app/icons/tabs/*.png. URL params:
+    slot=px (default 64).
+  -->
+  <div id="grid"></div>
+  <script type="module">
+    import { TAB_ICONS, iconSvg } from "/tools/tabicons-bake/icons.js";
+
+    const params = new URLSearchParams(location.search);
+    const slot = Number(params.get("slot") || 64);
+
+    document.documentElement.style.setProperty("--slot", slot + "px");
+
+    const grid = document.getElementById("grid");
+    for (const color of ["#FFFFFF", "#1E2768"]) {
+      const row = document.createElement("div");
+      row.className = "row";
+      for (const name of Object.keys(TAB_ICONS)) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.innerHTML = iconSvg(name, color, slot);
+        row.appendChild(cell);
+      }
+      grid.appendChild(row);
+    }
+  </script>
+</body>
+</html>

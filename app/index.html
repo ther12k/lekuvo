@@ -58,7 +58,7 @@
         a3: { name: '', short: '', pct: 0, color: '#86E3C3', reset: '' }
       },
       home: {
-        has: false, error: '', live: false, active: 0, total: 0,
+        has: false, error: '', live: false, active: 0, total: 0, busy: false,
         d0: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
         d1: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
         d2: { id: '', name: '', room: '', kind: 'switch', on: false, offline: false },
@@ -204,56 +204,114 @@
             <img src="icons/grip.png" alt="" style="width:14px;height:14px;opacity:0.7" />
           </button>
           <div class="flex-1 min-w-0 flex items-center gap-0.5 bg-white/[0.08] rounded-full p-1 overflow-hidden">
+            <!-- Reference tab anatomy: lucide icon always, label only on
+                 the active pill (NotchOverlay.tsx TABS). Icons are 64px
+                 lucide rasters (tools/tabicons-bake) shown at 16px in two
+                 tints — white for idle tabs, notch ink for the active
+                 pill — swapped via vx-show (the renderer has no
+                 currentColor). No transition-colors here: every animated
+                 property is a full-window repaint in the software
+                 renderer; the panel fade below carries the motion. -->
             <button
               id="tab-music"
-              :class="tab === 'music' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-music lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="Music"
+              :class="tab === 'music' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-music lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'music'"
-            >Music</button>
+            >
+              <img id="tab-music" vx-show="tab !== 'music'" src="icons/tabs/music.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-music" vx-show="tab === 'music'" src="icons/tabs/music-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'music'">Music</span>
+            </button>
             <button
               id="tab-focus"
-              :class="tab === 'focus' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-focus lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="Focus"
+              :class="tab === 'focus' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-focus lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'focus'"
-            >Focus</button>
+            >
+              <img id="tab-focus" vx-show="tab !== 'focus'" src="icons/tabs/focus.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-focus" vx-show="tab === 'focus'" src="icons/tabs/focus-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'focus'">Focus</span>
+            </button>
             <button
               id="tab-todo"
-              :class="tab === 'todo' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-todo lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="To-do"
+              :class="tab === 'todo' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-todo lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'todo'"
-            >To-do</button>
+            >
+              <img id="tab-todo" vx-show="tab !== 'todo'" src="icons/tabs/todo.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-todo" vx-show="tab === 'todo'" src="icons/tabs/todo-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'todo'">To-do</span>
+            </button>
             <button
               id="tab-board"
-              :class="tab === 'board' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-board lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="Board"
+              :class="tab === 'board' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-board lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'board'"
-            >Board</button>
+            >
+              <img id="tab-board" vx-show="tab !== 'board'" src="icons/tabs/board.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-board" vx-show="tab === 'board'" src="icons/tabs/board-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'board'">Board</span>
+            </button>
             <button
               id="tab-mixer"
-              :class="tab === 'mixer' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-mixer lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="Mixer"
+              :class="tab === 'mixer' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-mixer lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'mixer'"
-            >Mixer</button>
+            >
+              <img id="tab-mixer" vx-show="tab !== 'mixer'" src="icons/tabs/mixer.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-mixer" vx-show="tab === 'mixer'" src="icons/tabs/mixer-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'mixer'">Mixer</span>
+            </button>
             <button
               id="tab-noise"
-              :class="tab === 'noise' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-noise lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="Noise"
+              :class="tab === 'noise' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-noise lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'noise'"
-            >Noise</button>
+            >
+              <img id="tab-noise" vx-show="tab !== 'noise'" src="icons/tabs/noise.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-noise" vx-show="tab === 'noise'" src="icons/tabs/noise-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'noise'">Noise</span>
+            </button>
             <button
               id="tab-mirror"
-              :class="tab === 'mirror' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-mirror lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="Mirror"
+              :class="tab === 'mirror' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-mirror lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'mirror'"
-            >Mirror</button>
+            >
+              <img id="tab-mirror" vx-show="tab !== 'mirror'" src="icons/tabs/mirror.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-mirror" vx-show="tab === 'mirror'" src="icons/tabs/mirror-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'mirror'">Mirror</span>
+            </button>
             <button
               id="tab-system"
-              :class="tab === 'system' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-system lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="System"
+              :class="tab === 'system' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-system lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'system'"
-            >System</button>
+            >
+              <img id="tab-system" vx-show="tab !== 'system'" src="icons/tabs/system.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-system" vx-show="tab === 'system'" src="icons/tabs/system-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'system'">System</span>
+            </button>
             <button
               id="tab-ai"
-              :class="tab === 'ai' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-ai lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="AI"
+              :class="tab === 'ai' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-ai lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'ai'"
-            >AI</button>
+            >
+              <img id="tab-ai" vx-show="tab !== 'ai'" src="icons/tabs/ai.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-ai" vx-show="tab === 'ai'" src="icons/tabs/ai-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'ai'">AI</span>
+            </button>
             <button
               id="tab-home"
-              :class="tab === 'home' ? 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors tab-on-home lk-ink' : 'h-8 px-2 rounded-full flex items-center text-[10px] font-extrabold transition-colors text-white/55 hover:text-white'"
+              title="Home"
+              :class="tab === 'home' ? 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold tab-on-home lk-ink' : 'h-8 px-2.5 rounded-full flex items-center gap-1.5 text-[10px] font-extrabold text-white/55 hover:text-white'"
               @click="tab = 'home'"
-            >Home</button>
+            >
+              <img id="tab-home" vx-show="tab !== 'home'" src="icons/tabs/home.png" alt="" class="shrink-0" style="width:16px;height:16px;opacity:0.55" />
+              <img id="tab-home" vx-show="tab === 'home'" src="icons/tabs/home-ink.png" alt="" class="shrink-0" style="width:16px;height:16px" />
+              <span vx-show="tab === 'home'">Home</span>
+            </button>
           </div>
           <button
             id="btn-pin"
@@ -275,7 +333,13 @@
         <div class="relative flex-1 min-h-0 p-3">
 
           <!-- ── Music: art + vinyl, lyrics, seek, transport ── -->
-          <div vx-show="tab === 'music'" class="h-full flex gap-3.5 items-stretch">
+          <div
+            vx-show="tab === 'music'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex gap-3.5 items-stretch">
             <div class="flex flex-col items-center gap-2 shrink-0" style="width:104px">
               <div vx-show="hasArt" class="lk-artglow rounded-[26px] overflow-hidden lk-inset shrink-0" style="width:104px;height:104px">
                 <img src="art/current.png" alt="" style="width:104px;height:104px" />
@@ -369,7 +433,13 @@
           </div>
 
           <!-- ── Focus: ring bezel + timer + controls + session bars ── -->
-          <div vx-show="tab === 'focus'" class="h-full flex items-center gap-5">
+          <div
+            vx-show="tab === 'focus'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex items-center gap-5">
             <div
               class="w-[106px] h-[106px] rounded-full shrink-0 flex flex-col items-center justify-center"
               style="border:10px solid #FFFFFF1A"
@@ -419,7 +489,13 @@
           </div>
 
           <!-- ── To-do: three host-driven rows + nudge ── -->
-          <div vx-show="tab === 'todo'" class="h-full flex flex-col">
+          <div
+            vx-show="tab === 'todo'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex flex-col">
             <div class="flex-1 min-h-0 flex flex-col gap-1.5 pr-1">
               <button
                 id="todo-0"
@@ -486,7 +562,13 @@
           </div>
 
           <!-- ── Board: clipboard history shell (collector deferred) ── -->
-          <div vx-show="tab === 'board'" class="h-full flex flex-col bg-white/[0.06] border border-white/10 rounded-2xl p-2.5">
+          <div
+            vx-show="tab === 'board'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex flex-col bg-white/[0.06] border border-white/10 rounded-2xl p-2.5">
             <div class="flex items-center justify-between mb-1.5 px-0.5">
               <p class="lk-caps text-[10px] text-white/40 font-bold">Board · tap to copy</p>
               <button id="btn-board-clear" class="text-[10px] font-bold bg-white/10 px-2 py-0.5 rounded-full text-white/60">Clear</button>
@@ -498,14 +580,26 @@
           </div>
 
           <!-- ── Mixer: per-app rows (PulseAudio backend deferred) ── -->
-          <div vx-show="tab === 'mixer'" class="h-full flex flex-col items-center justify-center gap-2 text-white/50">
+          <div
+            vx-show="tab === 'mixer'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex flex-col items-center justify-center gap-2 text-white/50">
             <div class="w-9 h-9 rounded-full bg-white/12"></div>
             <p class="text-xs">No apps are playing audio right now.</p>
             <p class="text-[11px] text-white/40 text-center">Real per-app volumes land here once the mixer backend ships.</p>
           </div>
 
           <!-- ── Noise: 2x4 tiles ── -->
-          <div vx-show="tab === 'noise'" class="h-full flex flex-col">
+          <div
+            vx-show="tab === 'noise'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex flex-col">
             <div class="grid grid-cols-4 gap-2 flex-1">
               <div :class="noise.rain ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-rain" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
@@ -568,7 +662,13 @@
           </div>
 
           <!-- ── Mirror: framed mascot stand-in (camera deferred) ── -->
-          <div vx-show="tab === 'mirror'" class="h-full flex items-center gap-4">
+          <div
+            vx-show="tab === 'mirror'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex items-center gap-4">
             <div
               class="relative w-[168px] h-[126px] rounded-[22px] overflow-hidden shrink-0 border border-white/15 flex items-center justify-center"
               style="background-color:#2B2540"
@@ -588,7 +688,13 @@
           </div>
 
           <!-- ── System: chips + network placeholders + mini calendar ── -->
-          <div vx-show="tab === 'system'" class="h-full flex gap-3 min-h-0">
+          <div
+            vx-show="tab === 'system'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex gap-3 min-h-0">
             <div class="flex-1 min-w-0 flex flex-col gap-2.5 min-h-0">
               <div class="flex items-center gap-2">
                 <button
@@ -684,7 +790,13 @@
           </div>
 
           <!-- ── AI: quota chips from the aiacctool collector ── -->
-          <div vx-show="tab === 'ai'" class="h-full flex flex-col gap-2 min-h-0">
+          <div
+            vx-show="tab === 'ai'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex flex-col gap-2 min-h-0">
             <div vx-show="!ai.has" class="flex-1 flex flex-col items-center justify-center gap-3 text-center">
               <div class="w-14 h-14 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center">
                 <div class="lk-display font-bold text-[20px]" style="color:#F8D77B">ai</div>
@@ -750,9 +862,20 @@
           </div>
 
           <!-- ── Home: device switches from the ghome collector ── -->
-          <div vx-show="tab === 'home'" class="h-full flex flex-col gap-2 min-h-0">
+          <div
+            vx-show="tab === 'home'"
+            vx-transition:enter="transition-opacity duration-100 ease-linear"
+            vx-transition:enter-start="opacity-0"
+            vx-transition:enter-end="opacity-100"
+            vx-transition:leave="transition-none"
+            class="h-full flex flex-col gap-2 min-h-0">
             <div vx-show="!home.has" class="flex-1 flex flex-col items-center justify-center gap-2">
-              <div class="w-5 h-5 rounded-full border-2 border-white/20 animate-spin"></div>
+              <!-- Spins only while a fetch is actually in flight (host
+                   drives home.busy); an idle always-on animate-spin kept
+                   the frame pump at full rate on this tab forever. -->
+              <div
+                :class="home.busy ? 'w-5 h-5 rounded-full border-2 border-white/20 animate-spin' : 'w-5 h-5 rounded-full border-2 border-white/20'"
+              ></div>
               <p vx-show="home.error !== ''" class="text-[11px] text-white/40" vx-text="home.error"></p>
             </div>
             <div vx-show="home.has" class="flex-1 min-h-0 flex flex-col">
