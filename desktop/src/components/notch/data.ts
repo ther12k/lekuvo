@@ -1,9 +1,9 @@
 import type { LucideIcon } from "lucide-react";
-import { CheckSquare, Camera, ClipboardList, CloudRain, Music, Settings, SlidersHorizontal, TreePine, Timer, Waves, Music2, Flame, Wind, MoonStar, AudioWaveform } from "lucide-react";
+import { CheckSquare, Camera, ClipboardList, CloudRain, Home, Music, Settings, SlidersHorizontal, Sparkles, TreePine, Timer, Waves, Music2, Flame, Wind, MoonStar, AudioWaveform } from "lucide-react";
 import type { LekuvoMood, SkinId } from "../Lekuvo";
 import type { NoiseKey } from "../../hooks/useNoise";
 
-export type TabId = "music" | "focus" | "todo" | "board" | "mixer" | "noise" | "mirror" | "system";
+export type TabId = "music" | "focus" | "todo" | "board" | "mixer" | "noise" | "mirror" | "system" | "ai" | "home";
 
 export const TABS: { id: TabId; label: string; icon: LucideIcon; color: string; mood: LekuvoMood }[] = [
   { id: "music", label: "Music", icon: Music, color: "#9DB2FF", mood: "music" },
@@ -14,6 +14,8 @@ export const TABS: { id: TabId; label: string; icon: LucideIcon; color: string; 
   { id: "noise", label: "Noise", icon: CloudRain, color: "#C4B5FD", mood: "calm" },
   { id: "mirror", label: "Mirror", icon: Camera, color: "#FF9EC4", mood: "hello" },
   { id: "system", label: "System", icon: Settings, color: "#A5B4FC", mood: "hello" },
+  { id: "ai", label: "AI", icon: Sparkles, color: "#F5B455", mood: "wow" },
+  { id: "home", label: "Home", icon: Home, color: "#6FD9E8", mood: "hello" },
 ];
 
 /** what Lekuvo says in the panel footer for each tab */
@@ -26,6 +28,8 @@ export const TIPS: Record<TabId, string> = {
   noise: "Rain + kalimba = instant cozy.",
   mirror: "Your camera feed never leaves this page.",
   system: "Wi-Fi, Bluetooth, brightness — all real, all here.",
+  ai: "Your AI quotas, straight from aiacctool.",
+  home: "Lights and plugs, room by room — Home Assistant ready.",
 };
 
 export interface Song {

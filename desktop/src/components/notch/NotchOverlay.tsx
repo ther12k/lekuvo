@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import Lekuvo from "../Lekuvo";
 import SystemPanel from "./SystemPanel";
+import AiPanel from "./AiPanel";
+import HomePanel from "./HomePanel";
 import type { LekuvoMood, SkinId } from "../Lekuvo";
 import { useNoise } from "../../hooks/useNoise";
 import { useTheme } from "../../theme";
@@ -593,6 +595,8 @@ export default function NotchOverlay() {
                         {tab === "noise" && <NoisePanel noise={noise} onToggle={toggleNoise} onVol={volNoise} />}
                         {tab === "mirror" && <MirrorPanel />}
                         {tab === "system" && <SystemPanel />}
+                        {tab === "ai" && <AiPanel />}
+                        {tab === "home" && <HomePanel />}
                       </motion.div>
                     </AnimatePresence>
                   </div>

@@ -234,6 +234,55 @@ fn spawn_hit_tester(app: AppHandle) {
     });
 }
 
+/* ───────────────────────── collectors (AI quota, Google Home/HA) ──
+   The same self-contained python collectors gnome-notch uses, reading
+   ~/.config/ai-usage-monitor and ~/.config/google-home-panel — existing
+   setups keep working unchanged. */
+
+fn collector_path(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("collectors")
+        .join(name)
+}
+
+fn run_collector(script: &str, args: &[&str]) -> Result<serde_json::Value, String> {
+    let out = std::process::Command::new("python3")
+        .arg("-I")
+        .arg(collector_path(script))
+        .args(args)
+        .output()
+        .map_err(|e| format!("python3: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "{} failed: {}",
+            script,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    serde_json::from_slice(&out.stdout).map_err(|e| format!("{script} json: {e}"))
+}
+
+#[tauri::command]
+fn ai_status() -> Result<serde_json::Value, String> {
+    run_collector("ai-collector.py", &[])
+}
+
+/// action: None = status, "toggle"|"on"|"off" (with id), "launch"
+#[tauri::command]
+fn ghome(action: Option<String>, id: Option<String>) -> Result<serde_json::Value, String> {
+    let args: Vec<String> = match action.as_deref() {
+        None => vec![],
+        Some("launch") => vec!["--launch".into()],
+        Some(a @ ("toggle" | "on" | "off")) => {
+            let id = id.ok_or_else(|| format!("{a} needs a device id"))?;
+            vec![format!("--{a}"), id]
+        }
+        Some(other) => return Err(format!("unknown ghome action {other:?}")),
+    };
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_collector("ghome-collector.py", &refs)
+}
+
 /* ───────────────────────── MPRIS media ───────────────────────── */
 
 /// JSON mirror of lekuvo_media::MediaSnapshot for the frontend.
@@ -770,6 +819,8 @@ pub fn run() {
             set_hit_rect,
             drag_begin,
             drag_end,
+            ai_status,
+            ghome,
             media_state,
             media_control,
             mixer_state,
