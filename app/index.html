@@ -690,7 +690,18 @@
               class="relative w-[168px] h-[126px] rounded-[22px] overflow-hidden shrink-0 border border-white/15 flex items-center justify-center"
               style="background-color:#2B2540"
             >
-              <div id="mascot-mirror" data-vv-test="mascot-mirror" class="w-[92px] h-[92px]"></div>
+              <!-- Sprite slot driven by the card's own `expanded &&
+                   !tucked` state: the mirror panel keeps laying out
+                   inside the collapsed card (the renderer neither clips
+                   overflow nor removes hidden subtrees), so an ungated
+                   slot would leave the host compositing his sprite
+                   below the collapsed pill. -->
+              <div
+                id="mascot-mirror"
+                data-vv-test="mascot-mirror"
+                vx-show="expanded && !tucked"
+                class="w-[92px] h-[92px]"
+              ></div>
             </div>
             <div class="min-w-0">
               <p class="lk-display font-bold text-base text-white">Camera check</p>
@@ -1072,10 +1083,15 @@
            calc(100% - HANG_W*100/160), size HANG_W=94 — he overlaps the
            card's bottom-left corner and dangles below it, which is why
            the footer reserves HANG_W+34 of left padding). The renderer
-           has no out-of-flow positioning, so he hangs from the root
-           column right after the card: 94px wide at the card's left+22,
+           has no out-of-flow positioning, so he hangs from the card's
+           flow right after its surface: 94px wide at the card's left+22,
            pulled up 58px so only his lower half dangles below the card.
-           Top zones only; the perch variant is future work. -->
+           Top zones only; the perch variant is future work. The slot is
+           driven by the same `expanded && !tucked` state the card's
+           size uses — and the host additionally composites his sprite
+           only once the card has settled open (main.rs
+           card_settled_open), because the slot's fact rides over the
+           collapsed pill while the card's height transition runs. -->
       <div
         id="mascot-full"
         data-vv-test="mascot-full"

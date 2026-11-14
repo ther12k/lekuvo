@@ -31,6 +31,10 @@ use lekuvo_mascot::{MoodController, SpriteStore, composite};
 /// blit and the silhouette morphs via CSS width/height transitions).
 const WIN_W: u16 = 760;
 const WIN_H: u16 = 560;
+/// The expanded card's full height (the `index.html` card's settled
+/// `392px`); the sprite-compositing guard allows a few px of spring
+/// overshoot/settle tolerance around it.
+const CARD_FULL_H: f32 = 392.0;
 /// Input rectangles grow by this much so edges are not hairline targets.
 const INPUT_PAD: i16 = 6;
 /// Keep-above re-assert cadence (the Layzee-proven value).
@@ -71,14 +75,16 @@ const MONTHS: [&str; 12] = [
 
 #[derive(Debug, Clone)]
 struct Settings {
-    /// One of the nine zones (`tl`..`br`) or `free`.
-    island_pos: String,
-    /// Free-placement window x (root coordinates).
+    /// Window x the bar was dropped at (root coordinates). The bar
+    /// moves freely: this is the exact release position, restored
+    /// as-is at startup. `None` until the first placement.
     island_x: Option<i32>,
-    /// Free-placement window y (root coordinates).
+    /// Window y the bar was dropped at (root coordinates).
     island_y: Option<i32>,
-    /// Whether drops snap to zones (true) or stay where released.
-    island_sticky: bool,
+    /// Legacy zone id (`tl`..`br`) from builds that snapped to zones:
+    /// honored once when no exact position has been saved yet, then
+    /// replaced by exact coordinates on the first save.
+    island_pos: Option<String>,
     /// Whether the pill automatically tucks/hides when idle.
     auto_hide: bool,
     /// Color theme: `classic` | `meadow` | `sunset` | `dusk`.
@@ -88,10 +94,9 @@ struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            island_pos: "tc".to_owned(),
             island_x: None,
             island_y: None,
-            island_sticky: true,
+            island_pos: Some("tc".to_owned()),
             auto_hide: false,
             theme: "classic".to_owned(),
         }
@@ -127,11 +132,6 @@ fn load_settings() -> Settings {
     let value: serde_json::Value = serde_json::from_str(&raw).unwrap_or_default();
     let object = value.as_object();
     Settings {
-        island_pos: object
-            .and_then(|o| o.get("island_pos"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("tc")
-            .to_owned(),
         island_x: object
             .and_then(|o| o.get("island_x"))
             .and_then(|v| v.as_i64())
@@ -140,10 +140,13 @@ fn load_settings() -> Settings {
             .and_then(|o| o.get("island_y"))
             .and_then(|v| v.as_i64())
             .map(|v| v as i32),
-        island_sticky: object
-            .and_then(|o| o.get("island_sticky"))
-            .and_then(|v| v.as_bool())
-            .unwrap_or(true),
+        // Legacy zone-only files keep working until the first drag
+        // save replaces them with exact coordinates. Files saved by
+        // the free-placement builds carry no island_pos at all.
+        island_pos: object
+            .and_then(|o| o.get("island_pos"))
+            .and_then(|v| v.as_str())
+            .map(str::to_owned),
         auto_hide: object
             .and_then(|o| o.get("auto_hide"))
             .and_then(|v| v.as_bool())
@@ -159,10 +162,8 @@ fn load_settings() -> Settings {
 
 fn save_settings(settings: &Settings) {
     let json = serde_json::json!({
-        "island_pos": settings.island_pos,
         "island_x": settings.island_x,
         "island_y": settings.island_y,
-        "island_sticky": settings.island_sticky,
         "auto_hide": settings.auto_hide,
         "theme": settings.theme,
     });
@@ -272,7 +273,9 @@ fn discover_resources() -> (PathBuf, PathBuf) {
 // Zone placement
 // ---------------------------------------------------------------------------
 
-/// Root coordinates for the window given a zone and the workarea.
+/// Root coordinates for the window given a zone and the workarea. Top
+/// and bottom zones hug the workarea edge exactly (the reference notch
+/// flush against the screen edge — no margin gap above/below the pill).
 fn zone_geometry(zone: &str, workarea: Geometry) -> (i16, i16) {
     let margin = 8i16;
     let mut chars = zone.chars();
@@ -287,8 +290,10 @@ fn zone_geometry(zone: &str, workarea: Geometry) -> (i16, i16) {
         // Middle zones center the pill row (46px), not the window, so
         // the card still has room to open downward inside the window.
         'm' => workarea.y + (workarea.height.saturating_sub(46) / 2) as i16,
-        'b' => workarea.y + workarea.height.saturating_sub(WIN_H) as i16 - margin,
-        _ => workarea.y + margin,
+        'b' => workarea.y + workarea.height.saturating_sub(WIN_H) as i16,
+        // Top zones: flush — the pill's top edge IS the window's top
+        // edge, and the window sits at the workarea's top edge.
+        _ => workarea.y,
     };
     (x.max(workarea.x), y.max(workarea.y))
 }
@@ -313,6 +318,59 @@ fn clamp_free(x: i16, y: i16, workarea: Geometry) -> (i16, i16) {
         x.clamp(workarea.x, max_x.max(workarea.x)),
         y.clamp(workarea.y, max_y.max(workarea.y)),
     )
+}
+
+/// Whether a window at `x,y` shows no pixel inside the workarea.
+fn fully_off_workarea(x: i16, y: i16, workarea: Geometry) -> bool {
+    let (wx, wy) = (i32::from(x), i32::from(y));
+    let (ax, ay, aw, ah) = (
+        i32::from(workarea.x),
+        i32::from(workarea.y),
+        i32::from(workarea.width),
+        i32::from(workarea.height),
+    );
+    wx + i32::from(WIN_W) <= ax || wx >= ax + aw || wy + i32::from(WIN_H) <= ay || wy >= ay + ah
+}
+
+/// Whether `zone` is one of the nine real zone ids (legacy saves could
+/// carry `free` or garbage).
+fn is_zone_id(zone: &str) -> bool {
+    matches!(
+        zone,
+        "tl" | "tc" | "tr" | "ml" | "mc" | "mr" | "bl" | "bc" | "br"
+    )
+}
+
+/// The window's startup placement: position plus the zone id that feeds
+/// the document's layout orientation. The bar moves freely, so an exact
+/// saved x,y restores as dropped and its zone derives from the restored
+/// position (`zone_of`); a legacy zone-only file keeps its zone id and
+/// converts through `zone_geometry`; a first run defaults to the flush
+/// top-center reference spot. The one clamp lives here and only at
+/// startup: a position that would show no pixel inside the workarea is
+/// pulled back in. Restores never clamp a partially visible window.
+fn restore_position(settings: &Settings, workarea: Geometry) -> ((i16, i16), String) {
+    match (settings.island_x, settings.island_y) {
+        (Some(x), Some(y)) => {
+            let x = x.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+            let y = y.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+            let (x, y) = if fully_off_workarea(x, y, workarea) {
+                clamp_free(x, y, workarea)
+            } else {
+                (x, y)
+            };
+            ((x, y), zone_of(x, y, workarea))
+        }
+        _ => {
+            let zone = settings
+                .island_pos
+                .as_deref()
+                .filter(|zone| is_zone_id(zone))
+                .unwrap_or("tc")
+                .to_owned();
+            (zone_geometry(&zone, workarea), zone)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -818,10 +876,14 @@ fn run_headless_snapshots(
         if let Some(sprites) = sprites.as_ref()
             && let Ok(facts) = view.layout_facts(viewport)
         {
+            // In-card slots composite only once the card is settled open
+            // (see card_settled_open): mid-morph their facts ride over
+            // the collapsed pill.
+            let card_open = card_settled_open(&facts);
             for fact in &facts.nodes {
                 let variant = match fact.fixture_id.as_str() {
                     "mascot-compact" | "mascot-toast" => "compact",
-                    "mascot-full" | "mascot-mirror" => "full",
+                    "mascot-full" | "mascot-mirror" if card_open => "full",
                     _ => continue,
                 };
                 if let Some((rgba, sw, sh)) = sprites.frame(moods.mood(), variant, 0) {
@@ -1488,15 +1550,7 @@ fn main() {
     })
     .expect("X11 overlay window");
     let workarea = win.workarea();
-    let (start_x, start_y) = if settings.island_pos == "free" {
-        clamp_free(
-            settings.island_x.unwrap_or(workarea.x as i32) as i16,
-            settings.island_y.unwrap_or(workarea.y as i32) as i16,
-            workarea,
-        )
-    } else {
-        zone_geometry(&settings.island_pos, workarea)
-    };
+    let ((start_x, start_y), startup_zone) = restore_position(&settings, workarea);
     win.move_window(start_x, start_y).expect("place window");
 
     // Initial host-owned state: clock, zone alignment, media placeholder.
@@ -1532,11 +1586,6 @@ fn main() {
             }
         }
     }
-    let startup_zone = if settings.island_pos == "free" {
-        zone_of(start_x, start_y, workarea)
-    } else {
-        settings.island_pos.clone()
-    };
     let _ = view.write_state("zone", ReactiveValue::String(startup_zone));
     let mut window_at = (start_x, start_y);
 
@@ -1748,13 +1797,12 @@ fn main() {
                     if dragging {
                         dragging = false;
                         press_anchor = None;
-                        // Snap (or clamp) and adopt the final position so
-                        // the echo ConfigureNotify is not treated as drift.
-                        if let Some(snapped) =
-                            drop_to_zone(&mut win, &mut view, &mut settings, window_at)
-                        {
-                            window_at = snapped;
-                        }
+                        // Free placement: the window stays exactly where
+                        // dropped — no snap, no clamp. The dropped
+                        // position is already adopted in `window_at` by
+                        // the drag motions, so the echo ConfigureNotify
+                        // matches and the drift guard stays quiet.
+                        finish_drag(&mut win, &mut view, &mut settings, window_at);
                     } else if press_anchor.is_some() {
                         // A grip click that never crossed the drag
                         // threshold: synthesize the pair so the pill's
@@ -2472,10 +2520,15 @@ fn main() {
                     && !is_tucked
                     && let Ok(facts) = view.layout_facts(viewport)
                 {
+                    // In-card slots composite only once the card is
+                    // settled open (see card_settled_open): mid-morph
+                    // their facts ride over the collapsed pill, and a
+                    // collapsed card leaves them laid out below it.
+                    let card_open = card_settled_open(&facts);
                     for fact in &facts.nodes {
                         let variant = match fact.fixture_id.as_str() {
                             "mascot-compact" | "mascot-toast" => "compact",
-                            "mascot-full" | "mascot-mirror" => "full",
+                            "mascot-full" | "mascot-mirror" if card_open => "full",
                             _ => continue,
                         };
                         if let Some((rgba, sw, sh)) =
@@ -2617,37 +2670,48 @@ fn wake(view: &mut VelquView, last_activity: &mut Instant, now: Instant) {
     }
 }
 
-fn drop_to_zone(
+/// Drag end under free placement: the window stays exactly where the
+/// pointer released it (the last drag motion already moved it there —
+/// no snap, no clamp, no corrective move). The exact dropped position
+/// is persisted for the next startup, and the document's zone state
+/// (layout orientation: top/bottom-flush pill styling) is re-derived
+/// from where the bar landed.
+fn finish_drag(
     win: &mut NotchWindow,
     view: &mut VelquView,
     settings: &mut Settings,
     window_at: (i16, i16),
-) -> Option<(i16, i16)> {
-    let workarea = win.workarea();
-    let (x, y, zone) = if settings.island_sticky {
-        let zone = zone_of(window_at.0, window_at.1, workarea);
-        let (x, y) = zone_geometry(&zone, workarea);
-        (x, y, zone)
-    } else {
-        let (x, y) = clamp_free(window_at.0, window_at.1, workarea);
-        (x, y, zone_of(x, y, workarea))
-    };
-    if std::env::var_os("LEKUVO_DEBUG").is_some() {
-        eprintln!("lekuvo: drop snap {zone} -> ({x},{y})");
-    }
-    let _ = win.move_window(x, y);
+) {
+    let zone = zone_of(window_at.0, window_at.1, win.workarea());
     let _ = view.write_state("zone", ReactiveValue::String(zone.clone()));
-    if settings.island_sticky {
-        settings.island_pos = zone;
-    } else {
-        settings.island_pos = "free".to_owned();
-        settings.island_x = Some(x as i32);
-        settings.island_y = Some(y as i32);
+    settings.island_pos = None;
+    settings.island_x = Some(i32::from(window_at.0));
+    settings.island_y = Some(i32::from(window_at.1));
+    if std::env::var_os("LEKUVO_DEBUG").is_some() {
+        eprintln!(
+            "lekuvo: drag end at ({},{}) zone {zone}",
+            window_at.0, window_at.1
+        );
     }
     save_settings(settings);
-    Some((x, y))
 }
 
+
+/// Whether the expanded card is settled open: its layout fact stands at
+/// (nearly) the full card height. In-card sprite slots — the hanging
+/// mascot and the mirror frame — may only composite while this holds:
+/// the card's height transition springs from 0, and during the morph
+/// the slots' facts ride over the collapsed pill (a screenshot mid-morph
+/// shows him dangling below it), while a collapsed card leaves them laid
+/// out below the pill entirely (the renderer neither clips overflow nor
+/// removes hidden subtrees — velqu-view worklist item 11).
+fn card_settled_open(facts: &velqu_view::LayoutFacts) -> bool {
+    facts
+        .nodes
+        .iter()
+        .find(|fact| fact.fixture_id == "card")
+        .is_some_and(|card| card.height >= CARD_FULL_H - 12.0)
+}
 
 /// Click-through rectangles for each visibility mode, from live layout
 /// facts (hidden `vx-show` elements leave no facts, so tucked mode uses
@@ -2803,6 +2867,244 @@ mod theme_tests {
         assert_eq!(view.reactive_state().unwrap().get_path("theme"), ReactiveValue::String("dusk".to_owned()));
         apply_theme(&mut view, &mut sprites, &app_dir, "classic").unwrap();
         assert_eq!(view.render(viewport).unwrap().frame.pixels(), frames[0]);
+    }
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+
+    fn settings_at(x: Option<i32>, y: Option<i32>, zone: Option<&str>) -> Settings {
+        Settings {
+            island_x: x,
+            island_y: y,
+            island_pos: zone.map(str::to_owned),
+            auto_hide: false,
+            theme: "classic".to_owned(),
+        }
+    }
+
+    #[test]
+    fn top_and_bottom_zones_sit_flush_at_the_workarea_edge() {
+        let workarea = Geometry { x: 0, y: 27, width: 1920, height: 1040 };
+        assert_eq!(zone_geometry("tc", workarea).1, workarea.y, "top zone: flush, no margin gap");
+        assert_eq!(
+            zone_geometry("bc", workarea).1,
+            workarea.y + workarea.height as i16 - WIN_H as i16,
+            "bottom zone: flush, no margin gap"
+        );
+        // The pill row (46px) still centers for middle zones.
+        assert_eq!(zone_geometry("mc", workarea).1, workarea.y + (1040 - 46) / 2);
+    }
+
+    #[test]
+    fn exact_position_restores_untouched() {
+        let workarea = Geometry { x: 0, y: 0, width: 1920, height: 1080 };
+        // The bar moves freely: the saved drop position restores as-is.
+        // Even a partially off-screen window is not clamped — the one
+        // clamp only fires when NO pixel would show.
+        let ((x, y), _) = restore_position(&settings_at(Some(-400), Some(500), None), workarea);
+        assert_eq!((x, y), (-400, 500));
+        let ((x, y), _) = restore_position(&settings_at(Some(1800), Some(900), None), workarea);
+        assert_eq!((x, y), (1800, 900));
+    }
+
+    #[test]
+    fn fully_off_screen_position_is_pulled_back_at_startup_only() {
+        let workarea = Geometry { x: 0, y: 0, width: 1920, height: 1080 };
+        let ((x, y), _) = restore_position(&settings_at(Some(5000), Some(2000), None), workarea);
+        assert!(
+            x + WIN_W as i16 <= workarea.x + workarea.width as i16
+                && y + WIN_H as i16 <= workarea.y + workarea.height as i16
+        );
+        let ((x, y), _) = restore_position(&settings_at(Some(-2000), Some(-2000), None), workarea);
+        assert!(x >= workarea.x && y >= workarea.y);
+    }
+
+    #[test]
+    fn legacy_zone_file_converts_and_keeps_its_orientation_zone() {
+        let workarea = Geometry { x: 0, y: 0, width: 1920, height: 1080 };
+        let ((x, y), zone) = restore_position(&settings_at(None, None, Some("tc")), workarea);
+        assert_eq!(((x, y), zone.as_str()), (zone_geometry("tc", workarea), "tc"));
+        // Middle zones keep their zone id: the window-center heuristic
+        // (zone_of) would misread a vertically centered pill row as a
+        // bottom zone and flip the layout orientation.
+        let ((_, _), zone) = restore_position(&settings_at(None, None, Some("mc")), workarea);
+        assert_eq!(zone, "mc");
+        // A legacy `free` (or garbage) id falls back to the top-center default.
+        let ((x, y), zone) = restore_position(&settings_at(None, None, Some("free")), workarea);
+        assert_eq!(((x, y), zone.as_str()), (zone_geometry("tc", workarea), "tc"));
+    }
+
+    #[test]
+    fn exact_restore_derives_the_zone_from_the_position() {
+        let workarea = Geometry { x: 0, y: 0, width: 1920, height: 1080 };
+        let ((_, _), zone) = restore_position(&settings_at(Some(100), Some(980), None), workarea);
+        assert_eq!(zone, zone_of(100, 980, workarea));
+    }
+}
+
+/// The mascot-slot gating regression: the in-card sprite slots (hanging
+/// mascot, mirror frame) must exist only in the settled-open card —
+/// collapsed states leave no slot to composite, and the collapsed pill
+/// sits flush at the window's top edge.
+#[cfg(test)]
+mod mascot_gating_tests {
+    use super::*;
+
+    fn app_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../app")
+    }
+
+    fn settle(view: &mut VelquView, viewport: Viewport) {
+        for _ in 0..48 {
+            view.step_animations_by(Duration::from_millis(33));
+            let _ = view.render(viewport);
+            if !view.has_active_animations() {
+                break;
+            }
+        }
+        view.pump_reactive(&[]);
+    }
+
+    fn find<'a>(
+        facts: &'a velqu_view::LayoutFacts,
+        fixture: &str,
+    ) -> Option<&'a velqu_view::LayoutNodeFact> {
+        facts.nodes.iter().find(|fact| fact.fixture_id == fixture)
+    }
+
+    #[test]
+    fn collapsed_pill_has_no_in_card_mascot_slots_and_sits_flush() {
+        let mut view = build_app_view(&app_dir());
+        let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).unwrap();
+        let _ = view.render(viewport);
+        view.pump_reactive(&[]);
+        settle(&mut view, viewport);
+
+        let facts = view.layout_facts(viewport).unwrap();
+        let pill = find(&facts, "pill").expect("pill is laid out");
+        assert!(
+            pill.y <= 2.0,
+            "collapsed pill sits flush at the window top edge (y={})",
+            pill.y
+        );
+        assert!(
+            find(&facts, "mascot-full").is_none(),
+            "collapsed state must leave no hanging-mascot slot"
+        );
+        assert!(
+            find(&facts, "mascot-mirror").is_none(),
+            "collapsed state must leave no mirror sprite slot"
+        );
+        assert!(!card_settled_open(&facts), "collapsed card fails the sprite guard");
+
+        // The persistent leak: a collapsed card whose last tab was the
+        // mirror kept a laid-out sprite slot below the pill.
+        let _ = view.write_state("tab", ReactiveValue::String("mirror".to_owned()));
+        view.pump_reactive(&[]);
+        settle(&mut view, viewport);
+        let facts = view.layout_facts(viewport).unwrap();
+        assert!(
+            find(&facts, "mascot-mirror").is_none(),
+            "collapsed card on the mirror tab must expose no sprite slot"
+        );
+    }
+
+    #[test]
+    fn settled_open_card_hangs_the_mascot_below_the_pill() {
+        let mut view = build_app_view(&app_dir());
+        let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).unwrap();
+        let _ = view.render(viewport);
+        view.pump_reactive(&[]);
+        let _ = view.write_state("expanded", ReactiveValue::Bool(true));
+        view.pump_reactive(&[]);
+        settle(&mut view, viewport);
+
+        let facts = view.layout_facts(viewport).unwrap();
+        let card = find(&facts, "card").expect("card is laid out");
+        assert!(
+            card_settled_open(&facts),
+            "settled card passes the sprite guard (height={})",
+            card.height
+        );
+        let pill = find(&facts, "pill").expect("pill is laid out");
+        let mascot = find(&facts, "mascot-full").expect("hanging mascot slot is laid out");
+        assert!(
+            mascot.y >= pill.y + pill.height,
+            "hanging mascot hangs below the pill (mascot.y={} pill.bottom={})",
+            mascot.y,
+            pill.y + pill.height
+        );
+    }
+
+    #[test]
+    fn collapsed_pill_scene_paints_no_mascot_pixels_below_the_pill() {
+        let app_dir = app_dir();
+        let mascot_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/mascot");
+        let mut view = build_app_view(&app_dir);
+        let sprites = match SpriteStore::load(&mascot_dir) {
+            Ok(sprites) => sprites,
+            Err(error) => panic!("mascot sprites load for the pixel check: {error}"),
+        };
+        let viewport = Viewport::try_new(WIN_W as u32, WIN_H as u32, 1.0).unwrap();
+        let _ = view.render(viewport);
+        view.pump_reactive(&[]);
+        settle(&mut view, viewport);
+
+        let result = view.render(viewport).unwrap();
+        let mut frame: Vec<u8> = result.frame.pixels().to_vec();
+        // Composite exactly like the live loop / snapshot capture
+        // (guard included): whatever the host would put on screen.
+        if let Ok(facts) = view.layout_facts(viewport) {
+            let card_open = card_settled_open(&facts);
+            let moods = MoodController::new();
+            for fact in &facts.nodes {
+                let variant = match fact.fixture_id.as_str() {
+                    "mascot-compact" | "mascot-toast" => "compact",
+                    "mascot-full" | "mascot-mirror" if card_open => "full",
+                    _ => continue,
+                };
+                if let Some((rgba, sw, sh)) = sprites.frame(moods.mood(), variant, 0) {
+                    composite(
+                        &mut frame,
+                        WIN_W as u32,
+                        (
+                            fact.x as u32,
+                            fact.y as u32,
+                            fact.width as u32,
+                            fact.height as u32,
+                        ),
+                        rgba,
+                        sw,
+                        sh,
+                    );
+                }
+            }
+        }
+
+        // Scan below the pill (y 50..200, left half where he would hang):
+        // no butter (#F8D77B) or chameleon-green (#86E3C3) pixels.
+        let stride = WIN_W as usize * 4;
+        let mut mascot_pixels = 0usize;
+        for y in 50..200usize {
+            for x in 0..400usize {
+                let (r, g, b) = {
+                    let px = &frame[y * stride + x * 4..y * stride + x * 4 + 3];
+                    (px[0], px[1], px[2])
+                };
+                let close = |c: u8, t: u8| (i32::from(c) - i32::from(t)).abs() <= 28;
+                if (close(r, 0xF8) && close(g, 0xD7) && close(b, 0x7B))
+                    || (close(r, 0x86) && close(g, 0xE3) && close(b, 0xC3))
+                {
+                    mascot_pixels += 1;
+                }
+            }
+        }
+        assert_eq!(
+            mascot_pixels, 0,
+            "mascot-colored pixels must not appear below the collapsed pill"
+        );
     }
 }
 

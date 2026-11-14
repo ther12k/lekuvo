@@ -7,11 +7,14 @@
 //! low-CPU poll loop that waits on the X socket instead of spinning.
 //!
 //! The overlay lessons come from the Layzee GTK port: a
-//! `_NET_WM_WINDOW_TYPE_NOTIFICATION` window is exempt from Mutter's
+//! `_NET_WM_WINDOW_TYPE_DOCK` window is exempt from Mutter's
 //! workarea/maximize heuristic (which silently denies client restacks
-//! for maximized windows), and a periodic re-assert of
-//! `_NET_WM_STATE_ABOVE` recovers the top position from later-raised
-//! keep-above windows.
+//! for maximized windows) and stays on the desktop when the WM shows
+//! the desktop (GNOME's Super+D / Windows+D — the earlier
+//! `_NET_WM_WINDOW_TYPE_NOTIFICATION` window was hidden by it), and a
+//! periodic re-assert of `_NET_WM_STATE_ABOVE` recovers the top
+//! position from later-raised keep-above windows. No `_NET_WM_STRUT` is
+//! set: the bar floats over the desktop without reserving space.
 
 use std::os::unix::io::AsRawFd;
 
@@ -34,7 +37,7 @@ x11rb::atom_manager! {
         UTF8_STRING,
         _NET_WM_NAME,
         _NET_WM_WINDOW_TYPE,
-        _NET_WM_WINDOW_TYPE_NOTIFICATION,
+        _NET_WM_WINDOW_TYPE_DOCK,
         _NET_WM_STATE,
         _NET_WM_STATE_ABOVE,
         _NET_WM_STATE_SKIP_TASKBAR,
@@ -78,6 +81,38 @@ impl From<x11rb::errors::ReplyError> for HostError {
     fn from(error: x11rb::errors::ReplyError) -> Self {
         HostError::X11(error.to_string())
     }
+}
+
+/// The atom-valued (`ATOM`-typed) EWMH property writes the notch window
+/// performs, as `(property, type, values)` triples in write order. A
+/// pure function so tests can pin the exact EWMH contract without an X
+/// server:
+///
+/// - the window type is `_NET_WM_WINDOW_TYPE_DOCK`: dock windows stay
+///   above the desktop AND stay visible when the WM shows the desktop
+///   (GNOME's Super+D / Windows+D), which hides plain windows and the
+///   previously used `_NET_WM_WINDOW_TYPE_NOTIFICATION`;
+/// - `_NET_WM_STATE` carries ABOVE + SKIP_TASKBAR + SKIP_PAGER (always
+///   on top, out of taskbar and pager);
+/// - nothing else is written — notably NO `_NET_WM_STRUT`, so the bar
+///   floats over the desktop without reserving space in it.
+fn atom_property_writes(atoms: &Atoms) -> Vec<(u32, u32, Vec<u32>)> {
+    vec![
+        (
+            atoms._NET_WM_WINDOW_TYPE,
+            u32::from(AtomEnum::ATOM),
+            vec![atoms._NET_WM_WINDOW_TYPE_DOCK],
+        ),
+        (
+            atoms._NET_WM_STATE,
+            u32::from(AtomEnum::ATOM),
+            vec![
+                atoms._NET_WM_STATE_ABOVE,
+                atoms._NET_WM_STATE_SKIP_TASKBAR,
+                atoms._NET_WM_STATE_SKIP_PAGER,
+            ],
+        ),
+    ]
 }
 
 /// Window geometry in root coordinates.
@@ -297,8 +332,10 @@ impl NotchWindow {
         Ok(window)
     }
 
-    /// EWMH identity: a notification-type, keep-above window that never
-    /// appears in the taskbar or pager.
+    /// EWMH identity: a dock-type, keep-above window that never appears
+    /// in the taskbar or pager and stays visible when the WM shows the
+    /// desktop (GNOME's Super+D / Windows+D hides notification-type
+    /// windows; dock windows survive it). See `atom_property_writes`.
     fn apply_wm_properties(&mut self) {
         let a = &self.atoms;
         if let Ok(cookie) =
@@ -325,34 +362,17 @@ impl NotchWindow {
                 {
                 let _ = cookie.check();
             }
-        if let Ok(cookie) =
-                self.conn
-            .change_property32(
+        for (property, property_type, values) in atom_property_writes(a) {
+            if let Ok(cookie) = self.conn.change_property32(
                 PropMode::REPLACE,
                 self.wid,
-                a._NET_WM_WINDOW_TYPE,
-                AtomEnum::ATOM,
-                &[a._NET_WM_WINDOW_TYPE_NOTIFICATION],
-            )
-                {
+                property,
+                property_type,
+                &values,
+            ) {
                 let _ = cookie.check();
             }
-        if let Ok(cookie) =
-                self.conn
-            .change_property32(
-                PropMode::REPLACE,
-                self.wid,
-                a._NET_WM_STATE,
-                AtomEnum::ATOM,
-                &[
-                    a._NET_WM_STATE_ABOVE,
-                    a._NET_WM_STATE_SKIP_TASKBAR,
-                    a._NET_WM_STATE_SKIP_PAGER,
-                ],
-            )
-                {
-                let _ = cookie.check();
-            }
+        }
         let _ = self.conn.flush();
     }
 
@@ -759,5 +779,78 @@ mod tests {
         assert_eq!(word >> 24, 128);
         assert_eq!((word >> 16) & 0xff, 128);
         assert_eq!(word & 0xff_00, 0);
+    }
+}
+
+/// The EWMH property contract, pinned without an X server: the atom
+/// ids the interning would resolve to are irrelevant (they only wire
+/// atoms into slots), so the tests use deterministic stand-ins.
+#[cfg(test)]
+mod wm_property_tests {
+    use super::atom_property_writes;
+    use super::Atoms;
+
+    fn fake_atoms() -> Atoms {
+        Atoms {
+            WM_NAME: 1,
+            UTF8_STRING: 2,
+            _NET_WM_NAME: 3,
+            _NET_WM_WINDOW_TYPE: 4,
+            _NET_WM_WINDOW_TYPE_DOCK: 6,
+            _NET_WM_STATE: 7,
+            _NET_WM_STATE_ABOVE: 8,
+            _NET_WM_STATE_SKIP_TASKBAR: 9,
+            _NET_WM_STATE_SKIP_PAGER: 10,
+            _NET_WORKAREA: 11,
+        }
+    }
+
+    #[test]
+    fn window_type_is_dock() {
+        // GNOME's show desktop (Super+D / Windows+D) hides ordinary and
+        // notification-type windows; DOCK windows stay on the desktop.
+        let atoms = fake_atoms();
+        let writes = atom_property_writes(&atoms);
+        let (_, _, values) = writes
+            .iter()
+            .find(|(property, _, _)| *property == atoms._NET_WM_WINDOW_TYPE)
+            .expect("window type is written");
+        assert_eq!(values, &[atoms._NET_WM_WINDOW_TYPE_DOCK]);
+    }
+
+    #[test]
+    fn wm_state_keeps_above_and_skips() {
+        let atoms = fake_atoms();
+        let writes = atom_property_writes(&atoms);
+        let (_, _, values) = writes
+            .iter()
+            .find(|(property, _, _)| *property == atoms._NET_WM_STATE)
+            .expect("wm state is written");
+        assert_eq!(
+            values,
+            &[
+                atoms._NET_WM_STATE_ABOVE,
+                atoms._NET_WM_STATE_SKIP_TASKBAR,
+                atoms._NET_WM_STATE_SKIP_PAGER,
+            ]
+        );
+    }
+
+    #[test]
+    fn only_window_type_and_state_are_written() {
+        // The exact write list: nothing else may appear — in particular
+        // no _NET_WM_STRUT (the bar must not reserve desktop space) and
+        // no notification-type fallback.
+        let atoms = fake_atoms();
+        let writes = atom_property_writes(&atoms);
+        let touched: Vec<u32> = writes.iter().map(|(property, _, _)| *property).collect();
+        assert_eq!(
+            touched,
+            vec![atoms._NET_WM_WINDOW_TYPE, atoms._NET_WM_STATE]
+        );
+        // Both atom-valued writes use the ATOM property type.
+        for (_, property_type, _) in &writes {
+            assert_eq!(*property_type, x11rb::protocol::xproto::AtomEnum::ATOM.into());
+        }
     }
 }
