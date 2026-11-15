@@ -25,3 +25,10 @@
 
 /* Card corner wash: the constant alpha tints in 01-notch.css
    blend over this theme's notch navy, so no per-theme overrides here. */
+
+/* item-10 fog blends over this theme's lk-btn / white-10-on-card. */
+.lk-fog60 { color: #ABA8BF; }
+.lk-fog70 { color: #C0BECF; }
+.lk-fog80 { color: #D5D3DF; }
+.lk-fog-rev { color: #AEACBD; }
+.lk-fog-nudge { color: #9A98AC; }

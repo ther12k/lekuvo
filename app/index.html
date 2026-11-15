@@ -322,8 +322,8 @@
           <button
             id="btn-pin"
             title="Pin open"
-            :class="pinned ? 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition text-[12px] font-extrabold lk-warm lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition text-[12px] font-extrabold lk-btn text-white/70'"
-            @click="pinned = true"
+      :class="pinned ? 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition text-[12px] font-extrabold lk-warm lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition text-[12px] font-extrabold lk-btn lk-fog70'"
+      @click="pinned = !pinned"
           >P</button>
           <button
             id="btn-close"
@@ -490,8 +490,8 @@
                   class="lk-warm lk-ink text-xs font-bold px-4 py-2 rounded-full active:opacity-80 transition"
                   vx-text="focus.running ? 'Pause' : 'Start'"
                 ></button>
-                <button id="btn-focus-reset" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center text-white/80 text-xs font-bold" title="Reset">R</button>
-                <button id="btn-focus-skip" class="lk-btn h-8 px-2.5 rounded-full flex items-center gap-1 text-[11px] font-semibold text-white/80" title="Jump to the last 3 seconds">3s</button>
+                <button id="btn-focus-reset" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center lk-fog80 text-xs font-bold" title="Reset">R</button>
+                <button id="btn-focus-skip" class="lk-btn h-8 px-2.5 rounded-full flex items-center gap-1 text-[11px] font-semibold lk-fog80" title="Jump to the last 3 seconds">3s</button>
               </div>
               <div class="flex items-center gap-1.5 mt-3.5">
                 <div :class="focus.sessions >= 1 ? 'h-2 flex-1 rounded-full lk-warm' : 'h-2 flex-1 rounded-full bg-white/15'"></div>
@@ -530,7 +530,7 @@
                 <div id="todo-0" vx-text="todos[0].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
                 <div
                   id="nudge-0"
-                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/50 text-[10px] font-extrabold"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center lk-fog-nudge text-[10px] font-extrabold"
                   title="Nudge me now"
                 >!</div>
               </button>
@@ -550,7 +550,7 @@
                 <div id="todo-1" vx-text="todos[1].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
                 <div
                   id="nudge-1"
-                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/50 text-[10px] font-extrabold"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center lk-fog-nudge text-[10px] font-extrabold"
                   title="Nudge me now"
                 >!</div>
               </button>
@@ -570,7 +570,7 @@
                 <div id="todo-2" vx-text="todos[2].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
                 <div
                   id="nudge-2"
-                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/50 text-[10px] font-extrabold"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center lk-fog-nudge text-[10px] font-extrabold"
                   title="Nudge me now"
                 >!</div>
               </button>
@@ -728,22 +728,22 @@
                 <button
                   id="chip-wifi"
                   title="Wi-Fi"
-                  :class="sys.wifi ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn text-white/60'"
+                  :class="sys.wifi ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn lk-fog60'"
                 >WF</button>
                 <button
                   id="chip-bt"
                   title="Bluetooth"
-                  :class="sys.bt ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn text-white/60'"
+                  :class="sys.bt ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn lk-fog60'"
                 >BT</button>
                 <button
                   id="chip-dnd"
                   title="Do not disturb"
-                  :class="sys.dnd ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-warm lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn text-white/60'"
+                  :class="sys.dnd ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-warm lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn lk-fog60'"
                 >DN</button>
                 <button
                   id="chip-dark"
                   title="Dark mode"
-                  :class="sys.dark ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn text-white/60'"
+                  :class="sys.dark ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn lk-fog60'"
                 >DM</button>
               </div>
               <div class="rounded-2xl bg-white/[0.05] border border-white/10 p-2 flex-1 min-h-0 overflow-hidden">
@@ -758,9 +758,9 @@
             <div class="shrink-0" style="width:188px">
               <div class="rounded-2xl bg-white/[0.05] border border-white/10 p-3">
                 <div class="flex items-center justify-between mb-2">
-                  <button id="cal-prev" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center text-white/60 text-xs" title="Previous month">&#8249;</button>
+                  <button id="cal-prev" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center lk-fog60 text-xs" title="Previous month">&#8249;</button>
                   <div vx-text="cal.month" class="text-[11px] font-extrabold text-white/85"></div>
-                  <button id="cal-next" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center text-white/60 text-xs" title="Next month">&#8250;</button>
+                  <button id="cal-next" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center lk-fog60 text-xs" title="Next month">&#8250;</button>
                 </div>
                 <div class="grid grid-cols-7 gap-y-0.5 text-center">
                   <div class="text-[9px] font-extrabold text-white/35">M</div>
@@ -914,7 +914,7 @@
                 </p>
                 <button id="btn-ghome-all-on" class="text-[10px] font-extrabold px-2.5 py-1 rounded-full text-white/90" style="background-color:#6FD9E833">All on</button>
                 <button id="btn-ghome-all-off" class="text-[10px] font-extrabold bg-white/10 text-white/60 px-2.5 py-1 rounded-full">All off</button>
-                <button id="btn-ghome-refresh" class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center text-white/60 text-[10px]" title="Refresh">&#8635;</button>
+                <button id="btn-ghome-refresh" class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center lk-fog-rev text-[10px]" title="Refresh">&#8635;</button>
               </div>
               <div class="flex-1 min-h-0 flex flex-col gap-1.5 pt-2 overflow-hidden">
                 <button
@@ -1033,8 +1033,12 @@
              footer carries no inline sprite; the reference reserves the
              slot via its footer padding (HANG_W + 34 top-flush, 16
              perched). -->
+        <!-- Footer top hairline as a real 1px background div: neither the
+             border-t utility nor a border-top longhand renders in the
+             current profile. -->
+        <div class="h-px shrink-0" style="background-color:#FFFFFF1A"></div>
         <div
-          class="h-[48px] shrink-0 border-t border-white/10 flex items-center gap-2 pr-3"
+          class="h-[48px] shrink-0 flex items-center gap-2 pr-3"
           :style="'padding-left:' + (zone === 'bl' || zone === 'bc' || zone === 'br' ? 16 : 128) + 'px'"
         >
           <p vx-show="tab === 'music'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Lyrics scroll on their own, thanks to LRCLIB.</p>
@@ -1048,7 +1052,7 @@
           <p vx-show="tab === 'ai'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Your AI quotas, straight from aiacctool.</p>
           <p vx-show="tab === 'home'" class="text-[12px] text-white/60 truncate flex-1"><span class="font-extrabold text-white/90">Lekuvo:</span> Lights and plugs, room by room — Home Assistant ready.</p>
 
-          <div class="ml-auto flex items-center gap-1 shrink-0">
+          <div class="flex items-center gap-1 shrink-0">
             <button
               id="theme-classic"
               title="Classic"

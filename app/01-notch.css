@@ -54,7 +54,8 @@ p {
 .lk-btn-accent { background-color: #4C5FD7; }
 .lk-btn-accent:hover { background-color: #5D6FE0; }
 
-#pill:hover { background-color: #1E293B; }
+/* Hover lift stays in the navy family (slate #1E293B read gray/off-brand). */
+#pill:hover { background-color: #2B3270; }
 
 /* ─── Active-tab fills (reference TABS[i].color; constant across themes).
        The 3px drop line under the active pill is the reference's
@@ -171,3 +172,23 @@ body { font-family: Nunito; }
 
 /* wash underlay: sits between the card's navy base and its content */
 .lk-wash { position: absolute; inset: 0; pointer-events: none; }
+
+/* ─── Pre-blended "white at N%" label colors ───
+       Worklist item 10 mitigation (docs/velqu-worklist.md): text with an
+       alpha-blended color (text-white/60 etc.) inside a flex-centered
+       FIXED-SIZE shape renders at the container origin instead of its
+       center; opaque text centers correctly. These classes carry the
+       same visual color, pre-blended opaque over the known backing, so
+       the run takes the correct path. Revert to the semantic
+       text-white/NN utilities once the renderer fix lands. Each
+       theme-*.css re-blends over its own lk-btn/lk-surface. */
+/* white/60 over lk-btn — OFF system chips, calendar chevrons */
+.lk-fog60 { color: #AAADC6; }
+/* white/70 over lk-btn — pin button */
+.lk-fog70 { color: #BFC2D4; }
+/* white/80 over lk-btn — focus reset/skip */
+.lk-fog80 { color: #D5D6E2; }
+/* white/60 over a white/10 chip on the card — home refresh */
+.lk-fog-rev { color: #AEB1C0; }
+/* white/50 over a white/10 chip on the card — todo nudge */
+.lk-fog-nudge { color: #9A9DB0; }

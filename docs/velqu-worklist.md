@@ -88,14 +88,62 @@ bench is the honest gate.
     Needed: out-of-flow positioning with relative-parent coordinates + z-order.
     (Interim hacks in the app: negative-margin overlap for the mascot — fragile.)
 
-## Item 10 evidence (measured 2026-11-15, live build snapshots)
-Repro: LEKUVO_SNAPSHOT_HEADLESS system.png; compare ink centroid vs shape center.
-- system chip 27x10: ink -4.6px HIGH
-- system chip 27x29: ink -8.4 left, -10.9 HIGH
-- active tab pill (~30px): ink -4.9 left, -2.8 HIGH
-- close/exit glyph in 32px circle: -4.9 left, -4.5 HIGH
-- single centered icon (grip, 32px): +0.7,+0.6 (correct)
-Pattern: runs containing TEXT sit high (≈1/3 of container height) and slightly
-left; icon-only runs center correctly. Suggests vertical centering uses the
-line box top (or baseline - x_height) instead of (H - line_height)/2 + ascent,
-plus a horizontal offset when a label follows an icon in the same run.
+## Item 10 evidence (re-measured 2026-11-15, controlled probe matrix)
+Repro: LEKUVO_SNAPSHOT_HEADLESS system.png; ink-core centroid vs shape center.
+Supersedes the earlier baseline theory — alpha text, :class ternaries, borders,
+backgrounds, and line-height were all exonerated by controlled probes.
+
+**The rule (deterministic across runs):** a flex container that is itself a
+flex child places its inline TEXT runs at the content-box origin (top-left)
+instead of centered. Offset ≈ −7..−10px on 32px shapes.
+
+Probe matrix (32px round chips, text "Xy", static classes):
+| case | d from center |
+|---|---|
+| A tailwind flex utilities, light bg + ink text | (−7.4, −6.6) |
+| B tailwind flex, dark bg + light text | (−10.4, −6.8) |
+| B' same, text wrapped in `<span>` | identical (−10.4, −6.8) |
+| D author-CSS `display:flex;align-items:center;justify-content:center` | (−10.4, −6.8) |
+| E with `border-2` | (−7.5, −4.9) |
+| F content-sized `h-8 items-center` (flow width) | vertical −6.9 |
+| parent changed to `grid grid-cols-4` | still (−8.7, −9.0) |
+
+Controls that DO center correctly:
+- `<img>` children of flex-in-flex (grip/close/prev/next: ±0.5px)
+- text in a NON-flex flow button (`Exit`, `px-2.5 py-1`): ±0.5px
+- calendar day cells (`.cal-cell` CSS flex, `vx-text` content, grid parent): ±2px
+- element boxes (divs/spans with explicit sizes, e.g. play/pause bars): ±1px
+
+App impact today: system chips WF/BT/DN/DM, pin "P", focus "R"/"3s", calendar
+chevrons, todo nudge "!", noise tile letters, home device-kind letters — all
+raw-text-in-flex children of flex rows. Mitigations attempted that do NOT
+work: opaque pre-blended colors (`lk-fog*` classes kept — they're the correct
+visual color either way), span-wrapping, grid parents, line-height tweaks.
+Working mitigations: bake the label as an `<img>` (icons are exempt), or make
+the button a non-flex flow box (Exit pattern). The lucide icon bake replaces
+nearly all affected labels with imgs — tracked as the app-side fix.
+
+## P0 addition 12 (found 2026-11-15, probe G collapsed)
+12. **Block flex-children lose width/height utilities**: a `w-8 h-8` div
+    with NO `flex` class, placed inside a flex parent, rendered as a ~1px
+    sliver — the width/height utilities did not size the flex item (it
+    collapsed to content width 0). Flex items that carry `flex` themselves
+    size fine. Repro: probe G in the session matrix (32px round chip,
+    block display, bg fill — vanished to a 1px column).
+
+## P1 feature requests — UX completeness (2026-11-15 UI review)
+Not bugs; capabilities the reference UX needs that the profile lacks today.
+Ordered by UX unlock:
+- **Text input** (`<input>`/`contenteditable` + key events): To-do add/rename
+  is impossible in-page today. Biggest missing interaction.
+- **Pointer-drag events** (press → move stream → release on one element):
+  continuous seek scrubbing, Mixer volume sliders, brightness. Click-only
+  today (the 10-segment seek bar is the workaround).
+- **Author-CSS `@keyframes` + `animation-delay`**: the EQ bars are static
+  (`animate-pulse` is baked but uniform — bars pulse in sync, and the music
+  panel's bars have no animation at all). Staggered per-bar animation needs
+  custom keyframes with per-element delay.
+- **Image tint/mask (currentColor)**: icons bake two PNGs per glyph (white +
+  ink). A tint/filter would halve the asset set and enable state colors.
+- **`margin: auto`** (`ml-auto` deferred): worked around with `flex-1`
+  spacers; only console-noise today.
