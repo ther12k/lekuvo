@@ -87,3 +87,15 @@ bench is the honest gate.
     overlay adds a full-size flex box; the hanging mascot shifts the footer).
     Needed: out-of-flow positioning with relative-parent coordinates + z-order.
     (Interim hacks in the app: negative-margin overlap for the mascot — fragile.)
+
+## Item 10 evidence (measured 2026-11-15, live build snapshots)
+Repro: LEKUVO_SNAPSHOT_HEADLESS system.png; compare ink centroid vs shape center.
+- system chip 27x10: ink -4.6px HIGH
+- system chip 27x29: ink -8.4 left, -10.9 HIGH
+- active tab pill (~30px): ink -4.9 left, -2.8 HIGH
+- close/exit glyph in 32px circle: -4.9 left, -4.5 HIGH
+- single centered icon (grip, 32px): +0.7,+0.6 (correct)
+Pattern: runs containing TEXT sit high (≈1/3 of container height) and slightly
+left; icon-only runs center correctly. Suggests vertical centering uses the
+line box top (or baseline - x_height) instead of (H - line_height)/2 + ascent,
+plus a horizontal offset when a label follows an icon in the same run.
