@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ui icon bake</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+    /* One row per tint (white for idle controls, notch ink for
+       accent-filled states), one 64px cell per icon. */
+    .row { display: flex; }
+    .cell { width: var(--slot); height: var(--slot); overflow: hidden; }
+    .cell svg { display: block; }
+  </style>
+</head>
+<body>
+  <!--
+    Bakes the 24 UI control icons (system chips, noise tiles, home
+    devices, empty states) into one grid; bake.sh slices the cells into
+    app/icons/ui/*.png. URL params: slot=px (default 64).
+  -->
+  <div id="grid"></div>
+  <script type="module">
+    import { UI_ICONS, iconSvg } from "/tools/uicons-bake/icons.js";
+
+    const params = new URLSearchParams(location.search);
+    const slot = Number(params.get("slot") || 64);
+
+    document.documentElement.style.setProperty("--slot", slot + "px");
+
+    const grid = document.getElementById("grid");
+    for (const color of ["#FFFFFF", "#1E2768"]) {
+      const row = document.createElement("div");
+      row.className = "row";
+      for (const name of Object.keys(UI_ICONS)) {
+        const cell = document.createElement("div");
+        cell.className = "cell";
+        cell.innerHTML = iconSvg(name, color, slot);
+        row.appendChild(cell);
+      }
+      grid.appendChild(row);
+    }
+  </script>
+</body>
+</html>

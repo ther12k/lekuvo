@@ -322,9 +322,12 @@
           <button
             id="btn-pin"
             title="Pin open"
-      :class="pinned ? 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition text-[12px] font-extrabold lk-warm lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition text-[12px] font-extrabold lk-btn lk-fog70'"
-      @click="pinned = !pinned"
-          >P</button>
+            :class="pinned ? 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition lk-warm' : 'w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition lk-btn'"
+            @click="pinned = !pinned"
+          >
+            <img id="btn-pin" vx-show="!pinned" src="icons/ui/pin.png" alt="Pin open" class="shrink-0" style="width:14px;height:14px;opacity:0.7" />
+            <img id="btn-pin" vx-show="pinned" src="icons/ui/pin-ink.png" alt="Pinned" class="shrink-0" style="width:14px;height:14px" />
+          </button>
           <button
             id="btn-close"
             class="lk-btn w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white/70"
@@ -490,7 +493,9 @@
                   class="lk-warm lk-ink text-xs font-bold px-4 py-2 rounded-full active:opacity-80 transition"
                   vx-text="focus.running ? 'Pause' : 'Start'"
                 ></button>
-                <button id="btn-focus-reset" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center lk-fog80 text-xs font-bold" title="Reset">R</button>
+                <button id="btn-focus-reset" class="lk-btn w-8 h-8 rounded-full flex items-center justify-center" title="Reset">
+                  <img src="icons/ui/rotate-ccw.png" alt="Reset" class="shrink-0" style="width:14px;height:14px;opacity:0.75" />
+                </button>
                 <button id="btn-focus-skip" class="lk-btn h-8 px-2.5 rounded-full flex items-center gap-1 text-[11px] font-semibold lk-fog80" title="Jump to the last 3 seconds">3s</button>
               </div>
               <div class="flex items-center gap-1.5 mt-3.5">
@@ -530,9 +535,9 @@
                 <div id="todo-0" vx-text="todos[0].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
                 <div
                   id="nudge-0"
-                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center lk-fog-nudge text-[10px] font-extrabold"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
                   title="Nudge me now"
-                >!</div>
+                ><img src="icons/ui/bell.png" alt="Nudge" class="shrink-0" style="width:12px;height:12px;opacity:0.6" /></div>
               </button>
               <button
                 id="todo-1"
@@ -550,9 +555,9 @@
                 <div id="todo-1" vx-text="todos[1].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
                 <div
                   id="nudge-1"
-                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center lk-fog-nudge text-[10px] font-extrabold"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
                   title="Nudge me now"
-                >!</div>
+                ><img src="icons/ui/bell.png" alt="Nudge" class="shrink-0" style="width:12px;height:12px;opacity:0.6" /></div>
               </button>
               <button
                 id="todo-2"
@@ -570,9 +575,9 @@
                 <div id="todo-2" vx-text="todos[2].time" class="lk-tabular text-[10px] bg-white/10 px-1.5 py-0.5 rounded-md text-white/70"></div>
                 <div
                   id="nudge-2"
-                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center lk-fog-nudge text-[10px] font-extrabold"
+                  class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"
                   title="Nudge me now"
-                >!</div>
+                ><img src="icons/ui/bell.png" alt="Nudge" class="shrink-0" style="width:12px;height:12px;opacity:0.6" /></div>
               </button>
             </div>
             <p class="text-[11px] text-white/40 mt-2">Give a task a time and Lekuvo will poke you. Tap the ! to nudge now.</p>
@@ -591,7 +596,9 @@
               <button id="btn-board-clear" class="text-[10px] font-bold bg-white/10 px-2 py-0.5 rounded-full text-white/60">Clear</button>
             </div>
             <div class="flex-1 flex flex-col items-center justify-center text-white/35 text-center pt-6">
-              <div class="w-9 h-9 rounded-lg bg-white/12 mb-1.5"></div>
+              <div class="w-9 h-9 rounded-lg bg-white/12 mb-1.5 flex items-center justify-center">
+                <img src="icons/ui/clipboard-list.png" alt="" style="width:18px;height:18px;opacity:0.5" />
+              </div>
               <div class="text-[11px] leading-snug">Copy anything anywhere — it lands on this board.</div>
             </div>
           </div>
@@ -604,7 +611,9 @@
             vx-transition:enter-end="opacity-100"
             vx-transition:leave="transition-none"
             class="h-full flex flex-col items-center justify-center gap-2 text-white/50">
-            <div class="w-9 h-9 rounded-full bg-white/12"></div>
+            <div class="w-9 h-9 rounded-full bg-white/12 flex items-center justify-center">
+              <img src="icons/ui/volume-2.png" alt="" style="width:18px;height:18px;opacity:0.5" />
+            </div>
             <p class="text-xs">No apps are playing audio right now.</p>
             <p class="text-[11px] text-white/40 text-center">Real per-app volumes land here once the mixer backend ships.</p>
           </div>
@@ -620,56 +629,56 @@
             <div class="grid grid-cols-4 gap-2 flex-1">
               <div :class="noise.rain ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-rain" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
-                  <span id="noise-rain" :class="noise.rain ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#7DD3FC">RA</span>
+                  <span id="noise-rain" :class="noise.rain ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#7DD3FC"><img id="noise-rain" src="icons/ui/cloud-rain.png" alt="" class="shrink-0" style="width:20px;height:20px" /></span>
                   <div id="noise-rain" class="text-[11px] font-bold text-white">Rain</div>
                   <div id="noise-rain" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.rain ? 'ON' : 'OFF'" :style="'background-color:' + (noise.rain ? '#7DD3FC' : '#FFFFFF1F')"></div>
                 </button>
               </div>
               <div :class="noise.forest ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-forest" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
-                  <span id="noise-forest" :class="noise.forest ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#86E3C3">FO</span>
+                  <span id="noise-forest" :class="noise.forest ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#86E3C3"><img id="noise-forest" src="icons/ui/trees.png" alt="" class="shrink-0" style="width:20px;height:20px" /></span>
                   <div id="noise-forest" class="text-[11px] font-bold text-white">Forest</div>
                   <div id="noise-forest" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.forest ? 'ON' : 'OFF'" :style="'background-color:' + (noise.forest ? '#86E3C3' : '#FFFFFF1F')"></div>
                 </button>
               </div>
               <div :class="noise.waves ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-waves" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
-                  <span id="noise-waves" :class="noise.waves ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#9DB2FF">WV</span>
+                  <span id="noise-waves" :class="noise.waves ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#9DB2FF"><img id="noise-waves" src="icons/ui/waves.png" alt="" class="shrink-0" style="width:20px;height:20px" /></span>
                   <div id="noise-waves" class="text-[11px] font-bold text-white">Waves</div>
                   <div id="noise-waves" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.waves ? 'ON' : 'OFF'" :style="'background-color:' + (noise.waves ? '#9DB2FF' : '#FFFFFF1F')"></div>
                 </button>
               </div>
               <div :class="noise.kalimba ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-kalimba" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
-                  <span id="noise-kalimba" :class="noise.kalimba ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#F8D77B">KA</span>
+                  <span id="noise-kalimba" :class="noise.kalimba ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#F8D77B"><img id="noise-kalimba" src="icons/ui/music-2.png" alt="" class="shrink-0" style="width:20px;height:20px" /></span>
                   <div id="noise-kalimba" class="text-[11px] font-bold text-white">Kalimba</div>
                   <div id="noise-kalimba" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.kalimba ? 'ON' : 'OFF'" :style="'background-color:' + (noise.kalimba ? '#F8D77B' : '#FFFFFF1F')"></div>
                 </button>
               </div>
               <div :class="noise.fire ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-fire" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
-                  <span id="noise-fire" :class="noise.fire ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#FDBA74">FI</span>
+                  <span id="noise-fire" :class="noise.fire ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#FDBA74"><img id="noise-fire" src="icons/ui/flame.png" alt="" class="shrink-0" style="width:20px;height:20px" /></span>
                   <div id="noise-fire" class="text-[11px] font-bold text-white">Fire</div>
                   <div id="noise-fire" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.fire ? 'ON' : 'OFF'" :style="'background-color:' + (noise.fire ? '#FDBA74' : '#FFFFFF1F')"></div>
                 </button>
               </div>
               <div :class="noise.wind ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-wind" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
-                  <span id="noise-wind" :class="noise.wind ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#A5F3FC">WI</span>
+                  <span id="noise-wind" :class="noise.wind ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#A5F3FC"><img id="noise-wind" src="icons/ui/wind.png" alt="" class="shrink-0" style="width:20px;height:20px" /></span>
                   <div id="noise-wind" class="text-[11px] font-bold text-white">Wind</div>
                   <div id="noise-wind" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.wind ? 'ON' : 'OFF'" :style="'background-color:' + (noise.wind ? '#A5F3FC' : '#FFFFFF1F')"></div>
                 </button>
               </div>
               <div :class="noise.night ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-night" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
-                  <span id="noise-night" :class="noise.night ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#C4B5FD">NI</span>
+                  <span id="noise-night" :class="noise.night ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#C4B5FD"><img id="noise-night" src="icons/ui/moon-star.png" alt="" class="shrink-0" style="width:20px;height:20px" /></span>
                   <div id="noise-night" class="text-[11px] font-bold text-white">Night</div>
                   <div id="noise-night" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.night ? 'ON' : 'OFF'" :style="'background-color:' + (noise.night ? '#C4B5FD' : '#FFFFFF1F')"></div>
                 </button>
               </div>
               <div :class="noise.deep ? 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.14] border-white/30' : 'rounded-2xl p-2 flex flex-col items-center justify-between border bg-white/[0.05] border-white/10'">
                 <button id="noise-deep" class="flex flex-col items-center gap-1 w-full active:opacity-80 transition">
-                  <span id="noise-deep" :class="noise.deep ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#6EE7B7">DE</span>
+                  <span id="noise-deep" :class="noise.deep ? 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white animate-pulse' : 'w-10 h-10 rounded-2xl flex items-center justify-center text-[13px] font-extrabold text-white opacity-55'" style="background-color:#6EE7B7"><img id="noise-deep" src="icons/ui/audio-waveform.png" alt="" class="shrink-0" style="width:20px;height:20px" /></span>
                   <div id="noise-deep" class="text-[11px] font-bold text-white">Deep</div>
                   <div id="noise-deep" class="text-[9px] font-bold px-2 py-0.5 rounded-full lk-ink" vx-text="noise.deep ? 'ON' : 'OFF'" :style="'background-color:' + (noise.deep ? '#6EE7B7' : '#FFFFFF1F')"></div>
                 </button>
@@ -728,23 +737,35 @@
                 <button
                   id="chip-wifi"
                   title="Wi-Fi"
-                  :class="sys.wifi ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn lk-fog60'"
-                >WF</button>
+                  :class="sys.wifi ? 'w-8 h-8 rounded-full flex items-center justify-center transition lk-accent-soft' : 'w-8 h-8 rounded-full flex items-center justify-center transition lk-btn'"
+                >
+                  <img id="chip-wifi" vx-show="!sys.wifi" src="icons/ui/wifi.png" alt="" class="shrink-0" style="width:15px;height:15px;opacity:0.6" />
+                  <img id="chip-wifi" vx-show="sys.wifi" src="icons/ui/wifi-ink.png" alt="" class="shrink-0" style="width:15px;height:15px" />
+                </button>
                 <button
                   id="chip-bt"
                   title="Bluetooth"
-                  :class="sys.bt ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn lk-fog60'"
-                >BT</button>
+                  :class="sys.bt ? 'w-8 h-8 rounded-full flex items-center justify-center transition lk-accent-soft' : 'w-8 h-8 rounded-full flex items-center justify-center transition lk-btn'"
+                >
+                  <img id="chip-bt" vx-show="!sys.bt" src="icons/ui/bluetooth.png" alt="" class="shrink-0" style="width:15px;height:15px;opacity:0.6" />
+                  <img id="chip-bt" vx-show="sys.bt" src="icons/ui/bluetooth-ink.png" alt="" class="shrink-0" style="width:15px;height:15px" />
+                </button>
                 <button
                   id="chip-dnd"
                   title="Do not disturb"
-                  :class="sys.dnd ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-warm lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn lk-fog60'"
-                >DN</button>
+                  :class="sys.dnd ? 'w-8 h-8 rounded-full flex items-center justify-center transition lk-warm' : 'w-8 h-8 rounded-full flex items-center justify-center transition lk-btn'"
+                >
+                  <img id="chip-dnd" vx-show="!sys.dnd" src="icons/ui/bell-off.png" alt="" class="shrink-0" style="width:15px;height:15px;opacity:0.6" />
+                  <img id="chip-dnd" vx-show="sys.dnd" src="icons/ui/bell-off-ink.png" alt="" class="shrink-0" style="width:15px;height:15px" />
+                </button>
                 <button
                   id="chip-dark"
                   title="Dark mode"
-                  :class="sys.dark ? 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-accent-soft lk-ink' : 'w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-extrabold transition lk-btn lk-fog60'"
-                >DM</button>
+                  :class="sys.dark ? 'w-8 h-8 rounded-full flex items-center justify-center transition lk-accent-soft' : 'w-8 h-8 rounded-full flex items-center justify-center transition lk-btn'"
+                >
+                  <img id="chip-dark" vx-show="!sys.dark" src="icons/ui/moon.png" alt="" class="shrink-0" style="width:15px;height:15px;opacity:0.6" />
+                  <img id="chip-dark" vx-show="sys.dark" src="icons/ui/moon-ink.png" alt="" class="shrink-0" style="width:15px;height:15px" />
+                </button>
               </div>
               <div class="rounded-2xl bg-white/[0.05] border border-white/10 p-2 flex-1 min-h-0 overflow-hidden">
                 <p class="lk-caps text-[10px] font-extrabold text-white/40 px-1.5 pt-0.5">Wi-Fi</p>
@@ -758,9 +779,13 @@
             <div class="shrink-0" style="width:188px">
               <div class="rounded-2xl bg-white/[0.05] border border-white/10 p-3">
                 <div class="flex items-center justify-between mb-2">
-                  <button id="cal-prev" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center lk-fog60 text-xs" title="Previous month">&#8249;</button>
+                  <button id="cal-prev" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center" title="Previous month">
+                    <img src="icons/ui/chevron-left.png" alt="" class="shrink-0" style="width:12px;height:12px;opacity:0.6" />
+                  </button>
                   <div vx-text="cal.month" class="text-[11px] font-extrabold text-white/85"></div>
-                  <button id="cal-next" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center lk-fog60 text-xs" title="Next month">&#8250;</button>
+                  <button id="cal-next" class="w-6 h-6 rounded-full lk-btn flex items-center justify-center" title="Next month">
+                    <img src="icons/ui/chevron-right.png" alt="" class="shrink-0" style="width:12px;height:12px;opacity:0.6" />
+                  </button>
                 </div>
                 <div class="grid grid-cols-7 gap-y-0.5 text-center">
                   <div class="text-[9px] font-extrabold text-white/35">M</div>
@@ -827,7 +852,7 @@
             class="h-full flex flex-col gap-2 min-h-0">
             <div vx-show="!ai.has" class="flex-1 flex flex-col items-center justify-center gap-3 text-center">
               <div class="w-14 h-14 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center">
-                <div class="lk-display font-bold text-[20px]" style="color:#F8D77B">ai</div>
+                <img src="icons/tabs/ai.png" alt="" style="width:26px;height:26px;opacity:0.9" />
               </div>
               <div>
                 <p class="lk-display font-bold text-white" vx-text="ai.text !== '' ? ai.text : 'AI quota'"></p>
@@ -914,7 +939,9 @@
                 </p>
                 <button id="btn-ghome-all-on" class="text-[10px] font-extrabold px-2.5 py-1 rounded-full text-white/90" style="background-color:#6FD9E833">All on</button>
                 <button id="btn-ghome-all-off" class="text-[10px] font-extrabold bg-white/10 text-white/60 px-2.5 py-1 rounded-full">All off</button>
-                <button id="btn-ghome-refresh" class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center lk-fog-rev text-[10px]" title="Refresh">&#8635;</button>
+                <button id="btn-ghome-refresh" class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center" title="Refresh">
+                  <img src="icons/ui/refresh-cw.png" alt="Refresh" class="shrink-0" style="width:12px;height:12px;opacity:0.6" />
+                </button>
               </div>
               <div class="flex-1 min-h-0 flex flex-col gap-1.5 pt-2 overflow-hidden">
                 <button
